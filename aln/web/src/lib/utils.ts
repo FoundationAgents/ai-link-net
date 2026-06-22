@@ -1,8 +1,27 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+const INTEGER_FORMATTER = new Intl.NumberFormat("en-US");
+const COMPACT_TOKEN_FORMATTER = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 2,
+  notation: "compact",
+});
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+/** Format whole-number counters with thousands separators. */
+export function formatInteger(value: number): string {
+  return INTEGER_FORMATTER.format(Math.max(0, Math.round(value)));
+}
+
+/** Format token counters compactly once they reach million scale. */
+export function formatCompactTokenCount(value: number): string {
+  const tokens = Math.max(0, Math.round(value));
+  return tokens >= 1_000_000
+    ? COMPACT_TOKEN_FORMATTER.format(tokens)
+    : formatInteger(tokens);
 }
 
 /** Extract entity_uid from FPAddress "host_uid:entity_uid". */

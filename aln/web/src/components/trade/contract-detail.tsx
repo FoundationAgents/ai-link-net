@@ -858,7 +858,7 @@ export function ContractDetail({
     async function loadMessages(withSpinner = false) {
       if (withSpinner) setLoadingWorkMessages(true);
       try {
-        const mailbox = await getMessages(currentUserUid, 200);
+        const mailbox = await getMessages(currentUserUid);
         if (!active) return;
         const filtered = mailbox.filter((message) => {
           const payload = message.payload as Record<string, unknown>;
@@ -982,7 +982,7 @@ export function ContractDetail({
     try {
       await tradeClient.sendContractMessage(contract.contract_id, currentUserUid, text);
       setWorkMessageInput("");
-      const mailbox = await getMessages(currentUserUid, 200);
+      const mailbox = await getMessages(currentUserUid);
       const filtered = mailbox.filter((message) => {
         const payload = message.payload as Record<string, unknown>;
         return payload.session_id === workSessionId;

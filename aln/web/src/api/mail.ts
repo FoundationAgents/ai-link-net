@@ -14,6 +14,21 @@ export interface SendMessageResponse {
   status: string;
 }
 
+export interface SendGroupMessageResponse {
+  message_id: string;
+  mail_id: string;
+  from_entity_uid: string;
+  session_id: string;
+  group_name: string | null;
+  recipient_count: number;
+  recipients: Array<{
+    address: string;
+    entity_uid: string;
+    host_uid: string;
+  }>;
+  status: string;
+}
+
 export interface MailboxMessage {
   message_id: string;
   mail_id: string;
@@ -21,6 +36,9 @@ export interface MailboxMessage {
   sender: string;
   recipient: string[];
   payload: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  conversation_type?: string | null;
+  group_id?: string | null;
   timestamp: string;
   direction: "inbound" | "outbound";
   is_read: boolean;
@@ -45,13 +63,29 @@ export async function sendMessage(
   return unwrap(data);
 }
 
+export async function sendGroupMessage(
+  fromEntity: string,
+  sessionId: string,
+  text: string,
+): Promise<SendGroupMessageResponse> {
+  const { data } = await apiClient.post<StandardResponse<SendGroupMessageResponse>>(
+    "/messages/send_group",
+    {
+      from_entity: fromEntity,
+      session_id: sessionId,
+      text,
+    },
+  );
+  return unwrap(data);
+}
+
 export async function getMessages(
   entityUid: string,
-  limit = 100,
+  limit: number | null = null,
 ): Promise<MailboxMessage[]> {
   const { data } = await apiClient.get<StandardResponse<MailboxMessage[]>>(
     `/messages/${entityUid}`,
-    { params: { limit } },
+    { params: limit === null ? undefined : { limit } },
   );
   return data.data ?? [];
 }

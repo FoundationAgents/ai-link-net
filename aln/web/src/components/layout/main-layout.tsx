@@ -1,4 +1,4 @@
-/* Main application layout — sidebar with nav + theme toggle + content area. */
+﻿/* Main application layout 鈥?sidebar with nav + theme toggle + content area. */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -21,8 +21,8 @@ import { cn } from "@/lib/utils";
 import { WebSocketProvider } from "@/providers/websocket-provider";
 import { useAppStore } from "@/stores/app";
 import { useThemeStore } from "@/stores/theme";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import {
   Tooltip,
   TooltipContent,
@@ -44,6 +44,14 @@ const NAV_ITEMS: NavItem[] = [
   { icon: Users, label: "My Entities", path: "/entities" },
 ];
 
+function BrandMark({ className }: { className?: string }) {
+  return (
+    <div className={cn("brand-mark", className)} aria-label="Foundation Agents">
+      <img src="/logo-black-1.png" alt="" className="brand-mark__image" />
+    </div>
+  );
+}
+
 export function MainLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -63,8 +71,6 @@ export function MainLayout({ children }: { children: ReactNode }) {
     [contactUnreadMap],
   );
 
-  const initials = currentUser?.name?.slice(0, 2).toUpperCase() ?? "??";
-
   useEffect(() => {
     if (currentUser && !currentAvatarSrc) {
       fetchAndCacheAvatar(currentUser.entity_uid);
@@ -81,11 +87,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
       {/* --- Desktop Sidebar --- */}
       <aside className="hidden md:flex w-16 flex-col items-center border-r border-sidebar-border bg-sidebar py-4 gap-2">
         {/* Brand logo */}
-        <img
-          src={theme === "dark" ? "/SP_仅图案（纯白）.png" : "/logo-black.png"}
-          alt="FP"
-          className="h-7 w-7 object-contain opacity-70 mb-3"
-        />
+        <BrandMark className="mb-3 h-8 w-8" />
 
         {/* Nav items with glow indicator */}
         <nav className="flex flex-col gap-1 flex-1">
@@ -124,19 +126,20 @@ export function MainLayout({ children }: { children: ReactNode }) {
 
         {/* Bottom actions */}
         <div className="flex flex-col items-center gap-1">
-          {/* User avatar — clickable for profile */}
+          {/* User avatar 鈥?clickable for profile */}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={() => setProfileOpen(true)}
                 className="mb-1 group"
               >
-                <Avatar className="h-9 w-9 border border-border group-hover:border-primary/40 transition-colors">
-                  <AvatarImage src={currentAvatarSrc} />
-                  <AvatarFallback className="bg-primary/15 text-primary text-xs font-heading font-semibold">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
+                <PixelAvatar
+                  name={currentUser?.name ?? "Human User"}
+                  kind={currentUser?.kind ?? "human"}
+                  src={currentAvatarSrc}
+                  size="md"
+                  className="transition-transform group-hover:scale-105"
+                />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">Edit Profile</TooltipContent>
@@ -205,8 +208,8 @@ export function MainLayout({ children }: { children: ReactNode }) {
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
-          <img src={theme === "dark" ? "/SP_仅图案（纯白）.png" : "/logo-black.png"} alt="FP" className="h-6 w-6 object-contain opacity-80" />
-          <span className="font-heading font-semibold text-sm">FP</span>
+          <BrandMark className="h-7 w-7" />
+          <span className="font-heading text-sm font-semibold">AI Office</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -216,12 +219,12 @@ export function MainLayout({ children }: { children: ReactNode }) {
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
           <button onClick={() => setProfileOpen(true)}>
-            <Avatar className="h-8 w-8 border border-border">
-              <AvatarImage src={currentAvatarSrc} />
-              <AvatarFallback className="bg-primary/15 text-primary text-[10px] font-heading font-semibold">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+            <PixelAvatar
+              name={currentUser?.name ?? "Human User"}
+              kind={currentUser?.kind ?? "human"}
+              src={currentAvatarSrc}
+              size="sm"
+            />
           </button>
         </div>
       </div>

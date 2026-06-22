@@ -41,7 +41,7 @@ def resolve_entity_uid(client: HostClient, entity_identifier: str) -> str:
 
     matched = client.entity_search(name=entity_identifier)
     if matched:
-        hints = [f"  {e.name} → {e.address.address}" for e in matched]
+        hints = [f"  {e.name} -> {e.address.address}" for e in matched]
         raise click.ClickException(
             f"Use FP address format, not names. Matching addresses:\n" + "\n".join(hints)
         )
@@ -65,7 +65,7 @@ def resolve_entity_card(entity_spec: str, default_host: str = "default"):
 
     matched = client.entity_search(name=entity_id)
     if matched:
-        hints = [f"  {e.name} → {e.address.address}" for e in matched]
+        hints = [f"  {e.name} -> {e.address.address}" for e in matched]
         raise click.ClickException(
             f"Use FP address format (host_uid:entity_uid), not name '{entity_id}'.\n"
             f"Matching addresses:\n" + "\n".join(hints)
@@ -151,23 +151,23 @@ def cli_exception_wrapper(error_message: str | None = None) -> Callable:
                 # Let click handle its own exceptions
                 raise
             except FriendshipRequiredError as e:
-                click.echo(click.style("✗ 发送失败：对方不是好友", fg="red", bold=True))
-                click.echo(f"  {e.sender_name} → {e.recipient_id} ({e.message_kind})")
+                click.echo(click.style("Error: friend required", fg="red", bold=True))
+                click.echo(f"  {e.sender_name} -> {e.recipient_id} ({e.message_kind})")
                 click.echo(f"  运行 aln friend request -e {e.sender_name} --to {e.recipient_id} 先添加好友")
                 sys.exit(1)
             except HostClientError as e:
                 # Handle host client errors
-                click.echo(click.style("✗ Host Error", fg="red", bold=True))
+                click.echo(click.style("Host Error", fg="red", bold=True))
                 click.echo(f"  {str(e)}")
                 sys.exit(1)
             except (FileNotFoundError, json.JSONDecodeError) as e:
                 # Handle config file errors
-                click.echo(click.style("✗ Config Error", fg="red", bold=True))
+                click.echo(click.style("Config Error", fg="red", bold=True))
                 click.echo(f"  {str(e)}")
                 sys.exit(1)
             except Exception as e:
                 # Handle all other exceptions
-                click.echo(click.style("✗ Error", fg="red", bold=True))
+                click.echo(click.style("Error", fg="red", bold=True))
                 if error_message:
                     click.echo(f"  {error_message}: {str(e)}")
                 else:

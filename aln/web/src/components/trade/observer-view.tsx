@@ -426,7 +426,7 @@ export function ObserverView({ contractId, onBack }: ObserverViewProps) {
       const messagePairs = await Promise.all(
         participants.map(async (participant) => [
           participant.entity_uid,
-          await getMessages(participant.entity_uid, 50).catch(() => []),
+          await getMessages(participant.entity_uid).catch(() => []),
         ] as const),
       );
 

@@ -24,10 +24,10 @@ import {
 } from "@/api";
 import { NetworkGraph } from "@/components/effects/network-graph";
 import { SpotlightCard } from "@/components/effects/spotlight-card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn, EASE_SMOOTH, kindAvatarClass } from "@/lib/utils";
+import { PixelAvatar } from "@/components/ui/pixel-avatar";
+import { cn, EASE_SMOOTH } from "@/lib/utils";
 import { useAppStore } from "@/stores/app";
 import type {
   Contact,
@@ -672,16 +672,13 @@ export function DiscoverPage() {
                                 key={`${resolveEntityHostUid(entity)}:${entity.entity_uid}`}
                                 className="flex items-center gap-3 p-2.5 rounded-lg bg-surface/70 border border-border"
                               >
-                                <Avatar className="h-8 w-8 border border-border shrink-0">
-                                  {avatarCache[entity.entity_uid] && (
-                                    <AvatarImage src={avatarCache[entity.entity_uid]} />
-                                  )}
-                                  <AvatarFallback
-                                    className={cn("text-[10px] font-heading font-semibold", kindAvatarClass(entity.kind))}
-                                  >
-                                    {entity.name.slice(0, 2).toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
+                                <PixelAvatar
+                                  name={entity.name}
+                                  kind={entity.kind}
+                                  provider={typeof entity.metadata?.provider === "string" ? entity.metadata.provider : undefined}
+                                  src={avatarCache[entity.entity_uid]}
+                                  size="sm"
+                                />
 
                                 <div className="flex-1 min-w-0">
                                   <p className="text-xs font-medium truncate">{entity.name}</p>

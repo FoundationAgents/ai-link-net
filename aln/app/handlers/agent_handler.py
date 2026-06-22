@@ -12,8 +12,11 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from aln.app.adapters.cli_adapter import CLIAdapter
+from aln.app.adapters.cli_adapter import CLIAdapter, CLIResult
 from aln.app.adapters.prompts import AGENT_HANDLER_PROMPT_TEMPLATE
+from aln.app.schemas.token_usage import TokenUsageRecord
+from aln.app.service.session_service import SessionService
+from aln.app.service.token_usage_service import TokenUsageService
 from fp.core.session import Session, SessionKind
 from fp.handler import BaseHandler, HandlerConfig
 from fp.message import InvokePayload, Message, MessageKind
@@ -112,6 +115,7 @@ class AgentHandler(BaseHandler):
             logger.warning("No adapter configured for AgentHandler")
             return
 
+        SessionService(self.entity).sync_group_session_from_message(message)
         session_id = self._resolve_session_id(message)
         await self._queue.put(QueuedMessage(session_id=session_id, message=message))
         logger.info(
@@ -215,11 +219,48 @@ class AgentHandler(BaseHandler):
                 raise
 
         self._save_provider_session_id(session_id, result.provider_session_id)
+        self._record_token_usage(session_id, messages, result)
 
         if result.return_code != 0:
             logger.warning(
                 f"[{self.entity.name}] Provider 执行失败 (exit_code={result.return_code})"
             )
+
+    def _record_token_usage(
+        self,
+        session_id: str,
+        messages: list[Message],
+        result: CLIResult,
+    ) -> None:
+        provider = getattr(self, "provider", None)
+        if not provider or not result.metadata:
+            return
+
+        host_uid = getattr(getattr(self.entity, "host", None), "uid", None)
+        if not isinstance(host_uid, str) or not host_uid:
+            logger.warning(f"[{self.entity.name}] Skip token usage record: missing host uid")
+            return
+
+        record = TokenUsageRecord.from_cli_metadata(
+            host_uid=host_uid,
+            entity_uid=self.entity.uid,
+            entity_name=self.entity.name,
+            provider=provider,
+            session_id=session_id,
+            provider_session_id=result.provider_session_id,
+            message_ids=[message.message_id for message in messages],
+            model=self.config.model,
+            return_code=result.return_code,
+            metadata=result.metadata,
+        )
+        if record is None:
+            return
+
+        TokenUsageService(host_uid).append(record)
+        logger.info(
+            f"[{self.entity.name}] Token usage recorded "
+            f"session_id={session_id} provider={provider} total={record.total_tokens}"
+        )
 
     def _group_messages_by_session(
         self, queued_messages: list[QueuedMessage]
@@ -353,19 +394,59 @@ class AgentHandler(BaseHandler):
             text = msg.extract_text()
             lines.append(f"[{i}] {header}")
             lines.append(f"内容: {text}\n")
-        lines.append("请依次处理这些消息，使用 aln mail 回复。")
+        lines.append("请依次处理这些消息；若 header 标记 conversation_type=group，请使用 aln group send 回复整个群。")
         return "\n".join(lines)
 
     def _format_single(self, message: Message) -> str:
         header = self._format_message_header(message)
         text = message.extract_text()
-        return f"{header}\n内容: {text}"
+        group_context = self._format_group_context(message)
+        parts = [header]
+        if group_context:
+            parts.append(group_context)
+        parts.append(f"内容: {text}")
+        return "\n".join(parts)
 
     def _format_message_header(self, message: Message) -> str:
         sender = self._resolve_sender_name(message)
         mail_id = message.metadata.get("mail_id", "")
         session_id = self._extract_payload_session_id(message) or "-"
+        group_label = self._format_group_label(message)
         return (
             f"From: {sender} | kind={message.kind.value} | "
-            f"mail_id={mail_id} | session_id={session_id}"
+            f"mail_id={mail_id} | session_id={session_id}{group_label}"
         )
+
+    @staticmethod
+    def _group_metadata(message: Message) -> dict | None:
+        if message.metadata.get("conversation_type") != "group":
+            return None
+        group_meta = message.metadata.get("group")
+        return group_meta if isinstance(group_meta, dict) else {}
+
+    def _format_group_label(self, message: Message) -> str:
+        group_meta = self._group_metadata(message)
+        if group_meta is None:
+            return ""
+        group_name = group_meta.get("name") or "group"
+        group_id = group_meta.get("session_id") or message.metadata.get("group_id") or "-"
+        return f" | conversation_type=group | group={group_name} ({group_id})"
+
+    def _format_group_context(self, message: Message) -> str:
+        group_meta = self._group_metadata(message)
+        if group_meta is None:
+            return ""
+        members = group_meta.get("members")
+        if not isinstance(members, dict):
+            return "Group Members: unknown"
+
+        lines = ["Group Members:"]
+        for member in members.values():
+            if not isinstance(member, dict):
+                continue
+            name = member.get("name") or member.get("entity_uid") or "unknown"
+            address = member.get("address") or "unknown"
+            role = member.get("role") or "member"
+            status = member.get("status") or "active"
+            lines.append(f"- {name} ({address}) role={role} status={status}")
+        return "\n".join(lines)

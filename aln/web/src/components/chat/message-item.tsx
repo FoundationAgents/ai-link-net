@@ -345,10 +345,10 @@ export function MessageItem({
     >
       <div
         className={cn(
-          "max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
+          "max-w-[75%] rounded-md border-2 px-4 py-2.5 text-sm leading-relaxed shadow-[0_3px_0_rgba(0,0,0,0.28)]",
           isSelf
-            ? "bg-primary text-primary-foreground rounded-br-md shadow-sm"
-            : "bg-card border border-border rounded-bl-md shadow-sm",
+            ? "border-primary/70 bg-sender-bubble text-primary-foreground"
+            : "border-border bg-card text-card-foreground",
         )}
       >
         {/* Text */}
@@ -460,10 +460,10 @@ export function CarbonCopyItem({ cc, contactUid }: CarbonCopyItemProps) {
     <div className={cn("flex", isSelf ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
+          "max-w-[85%] rounded-md border-2 px-3.5 py-2 text-sm leading-relaxed shadow-[0_3px_0_rgba(0,0,0,0.24)]",
           isSelf
-            ? "bg-primary/80 text-primary-foreground rounded-br-md"
-            : "bg-card border border-border rounded-bl-md",
+            ? "border-primary/70 bg-sender-bubble text-primary-foreground"
+            : "border-border bg-card",
         )}
       >
         {/* Sender name */}

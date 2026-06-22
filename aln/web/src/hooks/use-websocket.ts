@@ -112,10 +112,14 @@ export function useWebSocket() {
           // Normal message
           const msg: Message = {
             message_id: String(wsData.message_id ?? ""),
+            mail_id: wsData.mail_id ? String(wsData.mail_id) : undefined,
             kind: kind || undefined,
             sender: String(wsData.sender ?? ""),
             recipient: (wsData.recipient as string[]) ?? [],
             payload: (payloadRaw ?? { text: "" }) as unknown as MessagePayload,
+            metadata: wsData.metadata as Record<string, unknown> | undefined,
+            conversation_type: wsData.conversation_type as string | null | undefined,
+            group_id: wsData.group_id as string | null | undefined,
             timestamp: String(wsData.timestamp ?? ""),
             status: (wsData.status as MessageStatus) ?? "received",
             session_id: payloadRaw?.session_id as string | undefined,
@@ -123,6 +127,12 @@ export function useWebSocket() {
 
           const wsEvent: WsEvent = { type: "new_message", message: msg };
           listenersRef.current.forEach((fn) => fn(wsEvent));
+
+          const isGroupMessage =
+            msg.conversation_type === "group" ||
+            Boolean(msg.group_id) ||
+            msg.metadata?.conversation_type === "group";
+          if (isGroupMessage) return;
 
           const senderUid = extractEntityUid(msg.sender);
           const recipientUids = msg.recipient.map(extractEntityUid);

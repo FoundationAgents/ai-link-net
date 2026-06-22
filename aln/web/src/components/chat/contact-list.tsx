@@ -4,11 +4,11 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, Users } from "lucide-react";
 
-import { cn, kindAvatarClass, EASE_SMOOTH } from "@/lib/utils";
+import { cn, EASE_SMOOTH } from "@/lib/utils";
 import { useAppStore } from "@/stores/app";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Contact } from "@/types";
 
@@ -98,16 +98,13 @@ export function ContactList({ onSelect }: ContactListProps) {
         )}
       >
         <div className="relative flex-shrink-0">
-          <Avatar className="h-9 w-9 border border-border">
-            {avatarCache[contact.entity_uid] && (
-              <AvatarImage src={avatarCache[contact.entity_uid]} />
-            )}
-            <AvatarFallback
-              className={cn("text-xs font-heading font-semibold", kindAvatarClass(contact.kind))}
-            >
-              {contact.name.slice(0, 2).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
+          <PixelAvatar
+            name={contact.name}
+            kind={contact.kind}
+            provider={provider}
+            src={avatarCache[contact.entity_uid]}
+            size="md"
+          />
           {isOnline && (
             <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 border-2 border-sidebar" />
           )}

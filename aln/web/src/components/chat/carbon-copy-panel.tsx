@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Inbox, X } from "lucide-react";
 
+import { listGroupSessions } from "@/api";
+import type { SessionInfo } from "@/api";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, extractEntityUid } from "@/lib/utils";
 import { useAppStore } from "@/stores/app";
 import type { CarbonCopyMessage } from "@/types";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { CarbonCopyItem } from "./message-item";
 
 const MIN_WIDTH = 260;
@@ -23,8 +25,15 @@ interface CarbonCopyPanelProps {
 interface CarbonCopyTab {
   id: string;
   label: string;
+  type: "all" | "group" | "direct";
   count: number;
   lastTimestamp: number;
+}
+
+interface GroupContext {
+  contactGroupIds: Set<string>;
+  groupNames: Map<string, string>;
+  groupTabs: CarbonCopyTab[];
 }
 
 function loadSavedWidth(): number {
@@ -34,6 +43,77 @@ function loadSavedWidth(): number {
   } catch {
     return DEFAULT_WIDTH;
   }
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function isGroupSessionId(value: string | null | undefined): value is string {
+  return typeof value === "string" && value.startsWith("group:");
+}
+
+function timestampValue(timestamp: string): number {
+  const value = new Date(timestamp).getTime();
+  return Number.isNaN(value) ? 0 : value;
+}
+
+function memberUid(address: string): string {
+  return isGroupSessionId(address) ? address : extractEntityUid(address);
+}
+
+function groupIdFromCarbonCopy(cc: CarbonCopyMessage): string | null {
+  const payload = cc.originalPayload ?? {};
+  const sessionId =
+    stringValue(payload.session_id) ??
+    stringValue(payload.group_id) ??
+    stringValue(cc.originalRecipient) ??
+    stringValue(cc.originalSender);
+  if (isGroupSessionId(sessionId)) return sessionId;
+  if (isGroupSessionId(cc.originalRecipient)) return cc.originalRecipient;
+  if (isGroupSessionId(cc.originalSender)) return cc.originalSender;
+  return null;
+}
+
+function sessionIncludesContact(session: SessionInfo, contactUid: string): boolean {
+  if (session.members?.some((member) => member.entity_uid === contactUid)) {
+    return true;
+  }
+  return session.participants.some((address) => extractEntityUid(address) === contactUid);
+}
+
+function buildGroupContext(sessions: SessionInfo[], contactUid: string): GroupContext {
+  const contactGroupIds = new Set<string>();
+  const groupNames = new Map<string, string>();
+  const groupTabs: CarbonCopyTab[] = [];
+
+  for (const session of sessions) {
+    if (session.session_type !== "group") continue;
+    if (!isGroupSessionId(session.session_id)) continue;
+    if (!sessionIncludesContact(session, contactUid)) continue;
+
+    const label = session.name?.trim() || session.session_id;
+    contactGroupIds.add(session.session_id);
+    groupNames.set(session.session_id, label);
+    groupTabs.push({
+      id: `group:${session.session_id}`,
+      label,
+      type: "group",
+      count: 0,
+      lastTimestamp: session.updated_at * 1000,
+    });
+  }
+
+  return { contactGroupIds, groupNames, groupTabs };
+}
+
+function groupLabel(cc: CarbonCopyMessage, groupId: string, groupNames: Map<string, string>): string {
+  return (
+    groupNames.get(groupId) ??
+    (cc.originalRecipient === groupId ? cc.originalRecipientName?.trim() : undefined) ??
+    (cc.originalSender === groupId ? cc.originalSenderName?.trim() : undefined) ??
+    groupId
+  );
 }
 
 function resolveOtherParticipant(
@@ -56,9 +136,73 @@ function resolveOtherParticipant(
   };
 }
 
+function carbonCopyBelongsToContact(
+  cc: CarbonCopyMessage,
+  contactUid: string,
+  contactGroupIds: Set<string>,
+): boolean {
+  const groupId = groupIdFromCarbonCopy(cc);
+  if (groupId) {
+    return (
+      contactGroupIds.has(groupId) ||
+      memberUid(cc.originalSender) === contactUid ||
+      memberUid(cc.originalRecipient) === contactUid
+    );
+  }
+
+  return (
+    memberUid(cc.originalSender) === contactUid ||
+    memberUid(cc.originalRecipient) === contactUid
+  );
+}
+
+function contextTabForCarbonCopy(
+  cc: CarbonCopyMessage,
+  contactUid: string,
+  groupNames: Map<string, string>,
+): CarbonCopyTab {
+  const groupId = groupIdFromCarbonCopy(cc);
+  if (groupId) {
+    return {
+      id: `group:${groupId}`,
+      label: groupLabel(cc, groupId, groupNames),
+      type: "group",
+      count: 0,
+      lastTimestamp: 0,
+    };
+  }
+
+  const participant = resolveOtherParticipant(cc, contactUid);
+  return {
+    id: `direct:${participant.uid}`,
+    label: participant.label,
+    type: "direct",
+    count: 0,
+    lastTimestamp: 0,
+  };
+}
+
+function chooseCanonicalCarbonCopy(
+  current: CarbonCopyMessage,
+  next: CarbonCopyMessage,
+): CarbonCopyMessage {
+  const currentGroupId = groupIdFromCarbonCopy(current);
+  const nextGroupId = groupIdFromCarbonCopy(next);
+  if (currentGroupId || nextGroupId) {
+    if (!currentGroupId && nextGroupId) return next;
+    if (isGroupSessionId(next.originalRecipient) && !isGroupSessionId(current.originalRecipient)) {
+      return next;
+    }
+    return current;
+  }
+  return current.direction === "outbound" ? current : next;
+}
+
 export function CarbonCopyPanel({ contactUid, onClose }: CarbonCopyPanelProps) {
+  const currentUser = useAppStore((s) => s.currentUser);
   const carbonCopyMessages = useAppStore((s) => s.carbonCopyMessages);
   const clearCarbonCopies = useAppStore((s) => s.clearCarbonCopies);
+  const [groupSessions, setGroupSessions] = useState<SessionInfo[]>([]);
   const [width, setWidth] = useState(loadSavedWidth);
   const [activeTab, setActiveTab] = useState(ALL_TAB_ID);
   const dragging = useRef(false);
@@ -66,37 +210,64 @@ export function CarbonCopyPanel({ contactUid, onClose }: CarbonCopyPanelProps) {
   const startWidth = useRef(width);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!currentUser) {
+      setGroupSessions([]);
+      return;
+    }
+
+    let cancelled = false;
+    listGroupSessions(currentUser.entity_uid)
+      .then((sessions) => {
+        if (!cancelled) setGroupSessions(sessions);
+      })
+      .catch(() => {
+        if (!cancelled) setGroupSessions([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
+
+  const groupContext = useMemo(
+    () => buildGroupContext(groupSessions, contactUid),
+    [contactUid, groupSessions],
+  );
+
   const filtered = useMemo(() => {
-    const byContact = carbonCopyMessages.filter((cc) => {
-      const senderUid = extractEntityUid(cc.originalSender);
-      const recipientUid = extractEntityUid(cc.originalRecipient);
-      return senderUid === contactUid || recipientUid === contactUid;
-    });
+    const byContext = carbonCopyMessages.filter((cc) =>
+      carbonCopyBelongsToContact(cc, contactUid, groupContext.contactGroupIds),
+    );
     const groups = new Map<string, CarbonCopyMessage>();
-    for (const cc of byContact) {
+    for (const cc of byContext) {
       const key = cc.originalMessageId ?? cc.id;
       const existing = groups.get(key);
       if (!existing) { groups.set(key, cc); continue; }
-      const isContactSender = extractEntityUid(cc.originalSender) === contactUid;
-      const preferred = isContactSender ? "outbound" : "inbound";
-      if (cc.direction === preferred) groups.set(key, cc);
+      groups.set(key, chooseCanonicalCarbonCopy(existing, cc));
     }
     return Array.from(groups.values()).sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      (a, b) => timestampValue(a.timestamp) - timestampValue(b.timestamp),
     );
-  }, [carbonCopyMessages, contactUid]);
+  }, [carbonCopyMessages, contactUid, groupContext.contactGroupIds]);
 
   const tabs = useMemo(() => {
     const groupMap = new Map<string, CarbonCopyTab>();
+    for (const tab of groupContext.groupTabs) {
+      groupMap.set(tab.id, { ...tab });
+    }
+    const directMap = new Map<string, CarbonCopyTab>();
 
     for (const cc of filtered) {
-      const participant = resolveOtherParticipant(cc, contactUid);
-      const timestamp = new Date(cc.timestamp).getTime();
-      const existing = groupMap.get(participant.uid);
+      const tab = contextTabForCarbonCopy(cc, contactUid, groupContext.groupNames);
+      const targetMap = tab.type === "group" ? groupMap : directMap;
+      const timestamp = timestampValue(cc.timestamp);
+      const existing = targetMap.get(tab.id);
       if (!existing) {
-        groupMap.set(participant.uid, {
-          id: participant.uid,
-          label: participant.label,
+        targetMap.set(tab.id, {
+          id: tab.id,
+          label: tab.label,
+          type: tab.type,
           count: 1,
           lastTimestamp: timestamp,
         });
@@ -104,30 +275,39 @@ export function CarbonCopyPanel({ contactUid, onClose }: CarbonCopyPanelProps) {
       }
       existing.count += 1;
       existing.lastTimestamp = Math.max(existing.lastTimestamp, timestamp);
-      if (existing.label === existing.id && participant.label !== participant.uid) {
-        existing.label = participant.label;
+      if (existing.label === existing.id && tab.label !== tab.id) {
+        existing.label = tab.label;
       }
     }
+
+    const groupTabs = Array.from(groupMap.values())
+      .sort((a, b) => b.lastTimestamp - a.lastTimestamp);
+    const directTabs = Array.from(directMap.values())
+      .sort((a, b) => b.lastTimestamp - a.lastTimestamp);
 
     return [
       {
         id: ALL_TAB_ID,
         label: "All",
+        type: "all" as const,
         count: filtered.length,
         lastTimestamp: filtered.length > 0
-          ? new Date(filtered[filtered.length - 1].timestamp).getTime()
+          ? timestampValue(filtered[filtered.length - 1].timestamp)
           : 0,
       },
-      ...Array.from(groupMap.values()).sort((a, b) => b.lastTimestamp - a.lastTimestamp),
+      ...groupTabs,
+      ...directTabs,
     ];
-  }, [filtered, contactUid]);
+  }, [contactUid, filtered, groupContext]);
 
   const visibleMessages = useMemo(() => {
     if (activeTab === ALL_TAB_ID) {
       return filtered;
     }
-    return filtered.filter((cc) => resolveOtherParticipant(cc, contactUid).uid === activeTab);
-  }, [activeTab, contactUid, filtered]);
+    return filtered.filter((cc) =>
+      contextTabForCarbonCopy(cc, contactUid, groupContext.groupNames).id === activeTab,
+    );
+  }, [activeTab, contactUid, filtered, groupContext.groupNames]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

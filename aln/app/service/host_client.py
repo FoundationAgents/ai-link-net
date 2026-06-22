@@ -105,6 +105,10 @@ class HostClient:
         context: str,
         expected_type: type,
     ) -> Any:
+        if response.get("success") is False:
+            message = response.get("message")
+            detail = message if isinstance(message, str) and message else "request failed"
+            raise HostClientError(f"{context} failed: {detail}")
         if "data" not in response:
             raise HostClientError(f"{context} response missing 'data' field")
         data = response["data"]
@@ -450,6 +454,115 @@ class HostClient:
         return self._extract_data_field(
             response,
             context="send message",
+            expected_type=dict,
+        )
+
+    def create_group_session(
+        self,
+        entity_uid: str,
+        name: str,
+        members: list[str],
+        member_roles: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Create a group session for an entity."""
+        response = self._request(
+            "POST",
+            f"/api/v1/entities/{entity_uid}/sessions/groups",
+            payload={
+                "name": name,
+                "members": members,
+                "member_roles": member_roles or {},
+            },
+        )
+        return self._extract_data_field(
+            response,
+            context="create group session",
+            expected_type=dict,
+        )
+
+    def list_group_sessions(self, entity_uid: str) -> list[dict[str, Any]]:
+        """List group sessions for an entity."""
+        response = self._request(
+            "GET",
+            f"/api/v1/entities/{entity_uid}/sessions/groups",
+        )
+        return self._extract_data_field(
+            response,
+            context="list group sessions",
+            expected_type=list,
+        )
+
+    def add_group_members(
+        self,
+        entity_uid: str,
+        session_id: str,
+        members: list[str],
+        member_roles: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Invite members into a group session."""
+        response = self._request(
+            "POST",
+            f"/api/v1/entities/{entity_uid}/sessions/groups/{session_id}/members",
+            payload={
+                "members": members,
+                "member_roles": member_roles or {},
+            },
+        )
+        return self._extract_data_field(
+            response,
+            context="add group members",
+            expected_type=dict,
+        )
+
+    def remove_group_member(
+        self,
+        entity_uid: str,
+        session_id: str,
+        member: str,
+    ) -> dict[str, Any]:
+        """Remove one member from a group session."""
+        response = self._request(
+            "POST",
+            f"/api/v1/entities/{entity_uid}/sessions/groups/{session_id}/members/remove",
+            payload={"member": member},
+        )
+        return self._extract_data_field(
+            response,
+            context="remove group member",
+            expected_type=dict,
+        )
+
+    def delete_group_session(self, entity_uid: str, session_id: str) -> dict[str, Any]:
+        """Delete a group session."""
+        response = self._request(
+            "DELETE",
+            f"/api/v1/entities/{entity_uid}/sessions/groups/{session_id}",
+        )
+        return self._extract_data_field(
+            response,
+            context="delete group session",
+            expected_type=dict,
+        )
+
+    def send_group_message(
+        self,
+        from_entity: str,
+        session_id: str,
+        text: str,
+    ) -> dict[str, Any]:
+        """Send text message to a group session."""
+        response = self._request(
+            "POST",
+            "/api/v1/messages/send_group",
+            payload={
+                "from_entity": from_entity,
+                "session_id": session_id,
+                "text": text,
+            },
+        )
+        return self._extract_data_field(
+            response,
+            context="send group message",
             expected_type=dict,
         )
 

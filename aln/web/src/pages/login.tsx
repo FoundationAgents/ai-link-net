@@ -1,16 +1,15 @@
-/* Login page — clean, minimal first impression. */
+﻿/* Login page 鈥?clean, minimal first impression. */
 
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Trash2, ChevronRight } from "lucide-react";
 
-import { cn, kindAvatarClass, EASE_SMOOTH } from "@/lib/utils";
+import { cn, EASE_SMOOTH } from "@/lib/utils";
 import { useAppStore, loadSavedUsers, removeSavedUser } from "@/stores/app";
-import { useThemeStore } from "@/stores/theme";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import type { Contact, UserProfile } from "@/types";
 
 const containerVariants = {
@@ -35,7 +34,6 @@ export function LoginPage() {
   const [searchParams] = useSearchParams();
   const login = useAppStore((s) => s.login);
   const currentUser = useAppStore((s) => s.currentUser);
-  const theme = useThemeStore((s) => s.theme);
 
   const [hostUrl, setHostUrl] = useState("http://localhost:7001");
   const [entities, setEntities] = useState<Contact[]>([]);
@@ -44,7 +42,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [showEntities, setShowEntities] = useState(false);
 
-  // auto-login from URL params — fetch real entity info from server (#6)
+  // auto-login from URL params 鈥?fetch real entity info from server (#6)
   useEffect(() => {
     const uid = searchParams.get("entity_uid");
     const url = searchParams.get("host_url");
@@ -120,11 +118,9 @@ export function LoginPage() {
           transition={{ duration: 0.4, ease: EASE_SMOOTH }}
           className="text-center mb-10"
         >
-          <img
-            src={theme === "dark" ? "/SP_仅图案（纯白）.png" : "/logo-black.png"}
-            alt="Foundation Protocol"
-            className="h-10 w-10 mx-auto mb-5 object-contain"
-          />
+          <div className="pixel-brand-mark mx-auto mb-5 h-12 w-12 text-sm" aria-label="AI Office">
+            AI
+          </div>
           <h1 className="font-heading text-2xl font-semibold tracking-tight">
             Foundation Protocol
           </h1>
@@ -169,11 +165,7 @@ export function LoginPage() {
                       )}
                       onClick={() => handleSelectSaved(user)}
                     >
-                      <Avatar className="h-8 w-8 border border-border">
-                        <AvatarFallback className="bg-muted text-muted-foreground text-xs font-medium">
-                          {user.name.slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
+                      <PixelAvatar name={user.name} kind={user.kind} size="sm" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{user.name}</p>
                         <p className="text-[11px] text-muted-foreground truncate font-mono">
@@ -268,13 +260,12 @@ export function LoginPage() {
                       "hover:bg-surface-hover transition-colors duration-150",
                     )}
                   >
-                    <Avatar className="h-8 w-8 border border-border">
-                      <AvatarFallback
-                        className={cn("text-xs font-medium", kindAvatarClass(entity.kind))}
-                      >
-                        {entity.name.slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
+                    <PixelAvatar
+                      name={entity.name}
+                      kind={entity.kind}
+                      provider={typeof entity.metadata?.provider === "string" ? entity.metadata.provider : undefined}
+                      size="sm"
+                    />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium">{entity.name}</p>
                       <p className="text-[11px] text-muted-foreground">{entity.kind}</p>

@@ -10,6 +10,7 @@ import click
 from .entity import command as entity_command
 from .find import command as find_command
 from .friend import command as friend_command
+from .group import command as group_command
 from .host import command as host_command
 from .init import command as init_command
 from .contract import command as contract_command
@@ -88,6 +89,7 @@ for command in (
     entity_command,
     find_command,
     friend_command,
+    group_command,
     contract_command,
     market_command,
     pay_command,

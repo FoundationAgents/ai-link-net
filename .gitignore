@@ -26,6 +26,7 @@ venv/
 # Agent tooling
 .claude/
 .codex/
+.codex-run/
 .worktree/
 
 # Runtime logs
@@ -34,7 +35,27 @@ demo/recordings/
 
 # Node.js / Web UI
 node_modules/
+src/web/node_modules/
+src/web/dist/
 aln/web/node_modules/
+aln/web/public/vendor/*
+!aln/web/public/vendor/pixel-office/
+aln/web/public/vendor/pixel-office/*
+!aln/web/public/vendor/pixel-office/Characters.png
+!aln/web/public/vendor/pixel-office/Props.png
+!aln/web/public/vendor/pixel-office/custom/
+aln/web/public/vendor/pixel-office/custom/*
+!aln/web/public/vendor/pixel-office/custom/robot-standing-32x32.png
+!aln/web/public/vendor/pixel-office/custom/robot2-standing-32x32.png
+!aln/web/public/vendor/pixel-office/generated/
+aln/web/public/vendor/pixel-office/generated/*
+!aln/web/public/vendor/pixel-office/generated/door-tile.png
+!aln/web/public/vendor/pixel-office/generated/elevator-tile.png
+!aln/web/public/vendor/pixel-office/generated/floor-tile.png
+!aln/web/public/vendor/pixel-office/generated/wall-tile.png
+!aln/web/public/vendor/pixel-office/generated/window-tile.png
+aln/web/public/vendor/pixel-office-preview.html
+aln/web/pixel-office-preview.html
 **/.vite/
 aln/web/vite.config.js
 aln/web/vite.config.d.ts
@@ -51,6 +72,7 @@ yarn.lock
 # Local workspace
 reference/
 .fp-demo/
+Pixel_Office_32x32_v1.1/
 
 # Playwright
 /test-results/

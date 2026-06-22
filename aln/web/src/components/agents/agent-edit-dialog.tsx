@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { Camera, Loader2, Trash2 } from "lucide-react";
 
-import { cn, kindAvatarClass } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { deleteAvatar, updateEntity, uploadAvatar } from "@/api";
 import { useAppStore } from "@/stores/app";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import {
   Dialog,
   DialogContent,
@@ -47,8 +47,6 @@ export function AgentEditDialog({
   }, [open, agent]);
 
   if (!agent) return null;
-
-  const initials = agent.name.slice(0, 2).toUpperCase();
 
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -99,17 +97,13 @@ export function AgentEditDialog({
           {/* Avatar + info */}
           <div className="flex items-center gap-4">
             <div className="relative group">
-              <Avatar className="h-14 w-14 border border-border">
-                {avatarSrc && <AvatarImage src={avatarSrc} />}
-                <AvatarFallback
-                  className={cn(
-                    "font-heading font-semibold text-base",
-                    kindAvatarClass(agent.kind),
-                  )}
-                >
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
+              <PixelAvatar
+                name={agent.name}
+                kind={agent.kind}
+                provider={typeof agent.metadata?.provider === "string" ? agent.metadata.provider : undefined}
+                src={avatarSrc}
+                size="lg"
+              />
               <label
                 className={cn(
                   "absolute inset-0 flex items-center justify-center rounded-full",

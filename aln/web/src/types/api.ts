@@ -78,6 +78,9 @@ export interface Message {
   sender: string;
   recipient: string[];
   payload: MessagePayload;
+  metadata?: Record<string, unknown>;
+  conversation_type?: string | null;
+  group_id?: string | null;
   timestamp?: string;
   status?: MessageStatus;
   session_id?: string;

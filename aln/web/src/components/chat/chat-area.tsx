@@ -15,18 +15,20 @@ import {
 
 import { cn, extractEntityUid, normalizeTimestamp } from "@/lib/utils";
 import {
-  sendMessage,
-  getMessages,
-  markMessagesRead,
+  createSession,
   deleteFriend,
+  getMessages,
+  listSessions,
+  markMessagesRead,
+  sendMessage,
   uploadAvatar,
 } from "@/api";
 import type { MailboxMessage } from "@/api";
 import { useAppStore } from "@/stores/app";
 import { useWsListener } from "@/providers/websocket-provider";
 import type { WsEvent } from "@/hooks/use-websocket";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,7 +39,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageItem } from "./message-item";
 import { SessionDialog } from "./session-panel";
 import { CarbonCopyPanel } from "./carbon-copy-panel";
-import { createSession } from "@/api";
 import type { CarbonCopyMessage, Contact, Message, MessagePayload } from "@/types";
 
 interface ChatAreaProps {
@@ -130,6 +131,10 @@ export function ChatArea({ contact, onBack }: ChatAreaProps) {
   const prevContactUidRef = useRef<string | null>(null);
   const prevMessageCountRef = useRef(0);
   const contactUid = extractEntityUid(contact.entity_uid);
+  const hasContactSessionChoice = Object.prototype.hasOwnProperty.call(
+    contactSessionMap,
+    contactUid,
+  );
   const rawActiveSessionId = contactSessionMap[contactUid] ?? null;
 
   const getViewport = useCallback((): HTMLElement | null => {
@@ -152,6 +157,10 @@ export function ChatArea({ contact, onBack }: ChatAreaProps) {
   const isHumanToHuman =
     currentUser?.kind === "human" && contact.kind === "human";
   const isLocalEntity = currentHostUid != null && freshContact.host_uid === currentHostUid;
+  const contactProvider =
+    typeof freshContact.metadata?.provider === "string"
+      ? freshContact.metadata.provider
+      : undefined;
 
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -179,6 +188,32 @@ export function ChatArea({ contact, onBack }: ChatAreaProps) {
     }
   }, [contactUid, isHumanToHuman, rawActiveSessionId, setContactSession]);
 
+  useEffect(() => {
+    if (isHumanToHuman || !currentUser || hasContactSessionChoice) return;
+
+    let cancelled = false;
+    listSessions(currentUser.entity_uid, contactUid)
+      .then((sessions) => {
+        const latestSession = sessions.find(
+          (session) => !isImplicitSessionId(session.session_id),
+        );
+        if (!cancelled && latestSession) {
+          setContactSession(contactUid, latestSession.session_id);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    contactUid,
+    currentUser,
+    hasContactSessionChoice,
+    isHumanToHuman,
+    setContactSession,
+  ]);
+
   // refresh contact display info when selected (#10)
   useEffect(() => {
     refreshContact(contactUid);
@@ -197,7 +232,7 @@ export function ChatArea({ contact, onBack }: ChatAreaProps) {
     setLoadingHistory(true);
     setMessages([]);
 
-    getMessages(currentUser.entity_uid, 200)
+    getMessages(currentUser.entity_uid)
       .then((mailbox) => {
         // Load CC messages into sidebar store
         const ccMsgs = extractCarbonCopies(mailbox);
@@ -509,21 +544,13 @@ export function ChatArea({ contact, onBack }: ChatAreaProps) {
             </button>
           )}
           <div className="relative group shrink-0">
-            <Avatar className="h-8 w-8 border border-border">
-              {avatarCache[freshContact.entity_uid] && (
-                <AvatarImage src={avatarCache[freshContact.entity_uid]} />
-              )}
-              <AvatarFallback
-                className={cn(
-                  "text-xs font-heading font-semibold",
-                  freshContact.kind === "agent"
-                    ? "bg-accent/15 text-accent"
-                    : "bg-primary/15 text-primary",
-                )}
-              >
-                {freshContact.name.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            <PixelAvatar
+              name={freshContact.name}
+              kind={freshContact.kind}
+              provider={contactProvider}
+              src={avatarCache[freshContact.entity_uid]}
+              size="sm"
+            />
             {isLocalEntity && (
               <label className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
                 <Camera className="h-3.5 w-3.5 text-white" />

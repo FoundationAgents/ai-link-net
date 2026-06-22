@@ -11,6 +11,7 @@ from .jsonrpc import (
 from .response import StandardResponse
 from .host import HealthResponse, HostUpdateRequest, HostUpdateResponse
 from .entity import EntityUpdateRequest, RegisterEntityRequest
+from .token_usage import TokenUsageRecord, TokenUsageSummary, TokenUsageTotals
 from .trade import (
     ContractActionRequest,
     ContractWorkMessageRequest,
@@ -33,6 +34,9 @@ __all__ = [
     "HostUpdateResponse",
     "EntityUpdateRequest",
     "RegisterEntityRequest",
+    "TokenUsageRecord",
+    "TokenUsageSummary",
+    "TokenUsageTotals",
     "TradeSendRequest",
     "TradeSendResponse",
     "ContractActionRequest",

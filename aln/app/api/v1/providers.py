@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 
 from fastapi import APIRouter
 from loguru import logger
 
+from aln.app.adapters.cli_adapter import CLIMapping
+from aln.app.adapters.provider_executable import ProviderExecutableResolver
 from aln.app.schemas.provider import ProviderCheckRequest, ProviderCheckResponse
 
 router = APIRouter(prefix="/providers", tags=["providers"])
@@ -17,10 +18,10 @@ router = APIRouter(prefix="/providers", tags=["providers"])
 async def check_provider(request: ProviderCheckRequest) -> ProviderCheckResponse:
     """Check if provider CLI is available and get version info."""
     provider = request.provider
+    mapping = CLIMapping.from_yaml(provider)
+    resolved = ProviderExecutableResolver().resolve(provider, mapping.executable)
 
-    # Find executable path
-    executable_path = shutil.which(provider)
-    if not executable_path:
+    if resolved is None:
         logger.warning(f"Provider '{provider}' not found in PATH")
         return ProviderCheckResponse(
             available=False,
@@ -42,7 +43,7 @@ async def check_provider(request: ProviderCheckRequest) -> ProviderCheckResponse
     # Try to get version
     try:
         result = subprocess.run(
-            [provider] + cmd_args,
+            [resolved.command] + cmd_args,
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -59,7 +60,7 @@ async def check_provider(request: ProviderCheckRequest) -> ProviderCheckResponse
                 available=True,
                 provider=provider,
                 version=version,
-                executable_path=executable_path,
+                executable_path=resolved.command,
             )
         else:
             error_msg = result.stderr.strip() or result.stdout.strip() or "Unknown error"

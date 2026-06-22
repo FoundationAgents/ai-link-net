@@ -6,8 +6,8 @@ import { Camera, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateEntity, uploadAvatar, deleteAvatar, getEntity } from "@/api";
 import { useAppStore } from "@/stores/app";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import {
   Dialog,
   DialogContent,
@@ -44,8 +44,6 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
   }, [open, currentUser]);
 
   if (!currentUser) return null;
-
-  const initials = currentUser.name.slice(0, 2).toUpperCase();
 
   async function handleSave() {
     if (!currentUser || !name.trim()) return;
@@ -96,12 +94,12 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
           {/* Avatar */}
           <div className="flex items-center gap-4">
             <div className="relative group">
-              <Avatar className="h-16 w-16 border border-border">
-                {avatarSrc && <AvatarImage src={avatarSrc} />}
-                <AvatarFallback className="bg-primary/15 text-primary font-heading font-semibold text-lg">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
+              <PixelAvatar
+                name={currentUser.name}
+                kind={currentUser.kind}
+                src={avatarSrc}
+                size="lg"
+              />
               <label
                 className={cn(
                   "absolute inset-0 flex items-center justify-center rounded-full",

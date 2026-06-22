@@ -4,12 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, ChevronRight, Edit2, Loader2, RefreshCw, Trash2, UserPlus, Users } from "lucide-react";
 
-import { cn, kindAvatarClass, EASE_SMOOTH } from "@/lib/utils";
+import { cn, EASE_SMOOTH } from "@/lib/utils";
 import { listEntities, deleteEntity } from "@/api";
 import { useAppStore } from "@/stores/app";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import { SpotlightCard } from "@/components/effects/spotlight-card";
 import { AgentEditDialog } from "@/components/agents/agent-edit-dialog";
 import { RegisterFlow } from "@/components/entities/register-flow";
@@ -196,14 +196,13 @@ export function MyEntitiesPage() {
                         "transition-[border-color,box-shadow] duration-300",
                       )}
                     >
-                      <Avatar className="h-10 w-10 border border-border shrink-0">
-                        {avatarCache[entity.entity_uid] && (
-                          <AvatarImage src={avatarCache[entity.entity_uid]} />
-                        )}
-                        <AvatarFallback className={cn("text-xs font-heading font-semibold", kindAvatarClass(entity.kind))}>
-                          {entity.name.slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
+                      <PixelAvatar
+                        name={entity.name}
+                        kind={entity.kind}
+                        provider={typeof entity.metadata?.provider === "string" ? entity.metadata.provider : undefined}
+                        src={avatarCache[entity.entity_uid]}
+                        size="md"
+                      />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{entity.name}</p>
                         <p className="text-xs text-muted-foreground/60 truncate mt-0.5">{entity.description || "No description"}</p>
@@ -278,14 +277,13 @@ export function MyEntitiesPage() {
                                   "transition-[border-color,box-shadow] duration-300",
                                 )}
                               >
-                                <Avatar className="h-10 w-10 border border-border shrink-0">
-                                  {avatarCache[entity.entity_uid] && (
-                                    <AvatarImage src={avatarCache[entity.entity_uid]} />
-                                  )}
-                                  <AvatarFallback className={cn("text-xs font-heading font-semibold", kindAvatarClass(entity.kind))}>
-                                    {entity.name.slice(0, 2).toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
+                                <PixelAvatar
+                                  name={entity.name}
+                                  kind={entity.kind}
+                                  provider={typeof entity.metadata?.provider === "string" ? entity.metadata.provider : undefined}
+                                  src={avatarCache[entity.entity_uid]}
+                                  size="md"
+                                />
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium truncate">{entity.name}</p>
                                   <p className="text-xs text-muted-foreground/60 truncate mt-0.5">{entity.description || "No description"}</p>
