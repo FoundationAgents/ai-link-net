@@ -8,7 +8,6 @@ import subprocess
 from unittest.mock import MagicMock
 
 from fp import EntityKind, Host, Message, MessageKind
-from fp.handler import HandlerConfig
 from fp.message import InvokePayload
 
 from aln.app.adapters.cli_adapter import CLIAdapter, CLIResult
@@ -20,16 +19,7 @@ from aln.app.api.v1.sessions import (
 from aln.app.handlers.agent_handler import AgentHandler
 from aln.app.schemas.token_usage import TokenUsageRecord
 from aln.app.service.token_usage_service import TokenUsageService
-
-
-def _make_config(**overrides: object) -> HandlerConfig:
-    defaults = {
-        "trust_level": "fully_trusted",
-        "interaction_mode": "batch",
-        "output_format": "json",
-    }
-    defaults.update(overrides)
-    return HandlerConfig.from_dict(defaults)
+from test.app.handler_helpers import make_handler_config
 
 
 def test_codex_jsonl_usage_is_parsed() -> None:
@@ -192,7 +182,7 @@ def test_agent_handler_records_cli_usage() -> None:
         handler = AgentHandler.__new__(AgentHandler)
         handler.entity = agent
         handler.provider = "codex"
-        handler.config = _make_config(model="gpt-5")
+        handler.config = make_handler_config(model="gpt-5")
         handler._system_prompt = "test"
         handler._queue = MagicMock()
         handler.adapter = MagicMock()

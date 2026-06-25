@@ -98,8 +98,15 @@ GET /api/v1/entities/{entity_uid}/sessions/{session_id}/usage
 ```
 
 Provider usage records are captured at the `AgentHandler` CLI boundary and
-stored in the host token ledger, so group rooms can aggregate real Codex JSONL
-`turn.completed.usage` values across participating agents.
+stored in the host token ledger, so group rooms can aggregate real provider
+usage from participating agents. Codex JSONL `turn.completed.usage` and Claude
+Code JSON `usage` / `modelUsage` payloads are both supported when the provider
+CLI returns them.
+
+Agent replies are still expected to be sent through `aln mail` or
+`aln group send`. If a provider CLI returns plain text but does not create any
+ALN outbound mail during the turn, `AgentHandler` sends that provider text back
+through the original direct or group session as a visibility fallback.
 
 ## Current Boundary
 

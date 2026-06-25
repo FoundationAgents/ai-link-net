@@ -45,6 +45,8 @@ import {
 } from "@/api";
 import { getApiErrorMessage } from "@/api/client";
 import type { MailboxMessage, SessionInfo, GroupMemberInfo, TokenUsageSummary } from "@/api";
+import { buildConferenceRingSeatInputs } from "@/components/chat/pixel-office-layout";
+import { PixelOfficeRoom } from "@/components/chat/pixel-office-room";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,12 +57,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { PixelOfficeRoom } from "@/components/chat/pixel-office-room";
 import { PixelAvatar } from "@/components/ui/pixel-avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useWsListener } from "@/providers/websocket-provider";
-import { useAppStore } from "@/stores/app";
-import type { Contact, Message, MessagePayload } from "@/types";
+import type { WsEvent } from "@/hooks/use-websocket";
 import {
   cn,
   extractEntityUid,
@@ -68,7 +67,9 @@ import {
   formatInteger,
   normalizeTimestamp,
 } from "@/lib/utils";
-import type { WsEvent } from "@/hooks/use-websocket";
+import { useWsListener } from "@/providers/websocket-provider";
+import { useAppStore } from "@/stores/app";
+import type { Contact, Message, MessagePayload } from "@/types";
 
 interface GroupRoomListProps {
   rooms: SessionInfo[];
@@ -240,12 +241,17 @@ function ContactPicker({
             type="button"
             onClick={() => onToggle(contact.entity_uid)}
             className={cn(
-              "flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left last:border-b-0 hover:bg-surface",
-              selected && "bg-primary/5",
+              "contact-picker-row flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left last:border-b-0 hover:bg-surface",
+              selected && "is-selected bg-primary/5",
             )}
           >
-            <div className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border">
-              {selected && <Check className="h-3.5 w-3.5 text-primary" />}
+            <div
+              className={cn(
+                "contact-picker-check relative flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border",
+                selected && "is-selected",
+              )}
+            >
+              {selected && <Check className="h-3.5 w-3.5" />}
             </div>
             <PixelAvatar
               name={contact.name}
@@ -280,7 +286,7 @@ export function GroupRoomList({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 px-3 py-2">
-        <Button size="sm" className="flex-1" onClick={onCreate}>
+        <Button size="sm" className="room-action-button flex-1" onClick={onCreate}>
           <Plus className="h-4 w-4" />
           Room
         </Button>
@@ -315,9 +321,9 @@ export function GroupRoomList({
                 transition={{ delay: index * 0.025, duration: 0.2 }}
                 onClick={() => onSelect(room)}
                 className={cn(
-                  "w-full overflow-hidden rounded-lg border px-3 py-2.5 text-left transition-colors",
+                  "room-list-card w-full overflow-hidden rounded-lg border px-3 py-2.5 text-left transition-colors",
                   active
-                    ? "border-primary/20 bg-primary/10 text-foreground"
+                    ? "is-selected border-primary/20 bg-primary/10 text-foreground"
                     : "border-transparent text-muted-foreground hover:bg-surface hover:text-foreground",
                 )}
               >
@@ -696,17 +702,7 @@ export function GroupRoom({
     return map;
   }, [messages]);
 
-  const layout = useMemo(() => {
-    const count = Math.max(members.length, 1);
-    return members.map((member, index) => {
-      const angle = (-90 + (index * 360) / count) * (Math.PI / 180);
-      return {
-        member,
-        left: 50 + Math.cos(angle) * 38,
-        top: 50 + Math.sin(angle) * 31,
-      };
-    });
-  }, [members]);
+  const layout = useMemo(() => buildConferenceRingSeatInputs(members), [members]);
 
   const handleSend = async () => {
     if (!currentUser || !input.trim() || sending || !canSend) return;
@@ -893,8 +889,8 @@ export function GroupRoom({
                       <div
                         key={member.address}
                         className={cn(
-                          "group flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors",
-                          active ? "border-accent/30 bg-accent/10" : "border-transparent bg-transparent",
+                          "room-member-card group flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors",
+                          active ? "is-selected border-accent/30 bg-accent/10" : "border-transparent bg-transparent",
                         )}
                       >
                         <PixelAvatar
@@ -940,7 +936,7 @@ export function GroupRoom({
                     onClick={() => setAddMembersOpen(true)}
                     disabled={!canInvite}
                     title={canInvite ? "Invite members" : "Only owners and admins can invite"}
-                    className="mt-3 h-10 w-full justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white shadow-sm hover:bg-neutral-900 hover:text-white disabled:bg-muted disabled:text-muted-foreground"
+                    className="room-action-button mt-3 h-10 w-full justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white shadow-sm hover:bg-neutral-900 hover:text-white disabled:bg-muted disabled:text-muted-foreground"
                   >
                     <UserPlus className="h-4 w-4" />
                     Invite member
@@ -992,7 +988,7 @@ export function GroupRoom({
           </div>
 
           <div className="shrink-0 border-t border-border bg-background p-3">
-            <div className="flex items-end gap-2 rounded-lg border border-input bg-surface px-3 py-2 focus-within:border-primary/25">
+            <div className="room-composer flex items-end gap-2 rounded-lg border border-input bg-surface px-3 py-2 focus-within:border-primary/25">
               <textarea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
@@ -1004,6 +1000,7 @@ export function GroupRoom({
               />
               <Button
                 size="icon-sm"
+                className="room-send-button"
                 disabled={!input.trim() || sending || !canSend}
                 onClick={handleSend}
               >

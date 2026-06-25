@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildConferenceRingSeatInputs,
   buildPixelOfficeScene,
   PIXEL_OFFICE_SEATS,
   pixelOfficeSeatCapacity,
   resolvePixelOfficeSprite,
+  seatOverlapsConferenceTable,
 } from "@/components/chat/pixel-office-layout";
 import type { GroupMemberInfo } from "@/api";
 
@@ -29,12 +31,14 @@ function member(
 }
 
 describe("pixel office room layout", () => {
-  it("assigns members to stable office seats", () => {
-    const scene = buildPixelOfficeScene([
-      { member: member("alice", "Alice"), left: 0, top: 0 },
-      { member: member("bob", "Bob", "agent"), left: 0, top: 0 },
-      { member: member("cora", "Cora"), left: 0, top: 0 },
-    ]);
+  it("assigns members to evenly spaced conference seats", () => {
+    const scene = buildPixelOfficeScene(
+      buildConferenceRingSeatInputs([
+        member("alice", "Alice"),
+        member("bob", "Bob", "agent"),
+        member("cora", "Cora"),
+      ]),
+    );
 
     expect(scene.members.map((item) => item.member.entity_uid)).toEqual([
       "alice",
@@ -42,12 +46,16 @@ describe("pixel office room layout", () => {
       "cora",
     ]);
     expect(scene.members.map((item) => item.seat.key)).toEqual([
-      "lead",
-      "left-top",
-      "right-top",
+      "conference-0",
+      "conference-1",
+      "conference-2",
     ]);
-    expect(scene.members[0].seat).toMatchObject({ x: 38, y: 72 });
-    expect(scene.members[1].seat).toMatchObject({ x: 62, y: 72 });
+    expect(scene.members[0].seat.x).toBeCloseTo(45.16, 2);
+    expect(scene.members[0].seat.y).toBeCloseTo(64.64, 2);
+    expect(scene.members[1].seat.x).toBeCloseTo(11.25, 2);
+    expect(scene.members[1].seat.y).toBeCloseTo(35, 2);
+    expect(scene.members[2].seat.x).toBeCloseTo(79.06, 2);
+    expect(scene.members[2].seat.y).toBeCloseTo(35, 2);
     expect(scene.members[1].sprite).toMatchObject({
       key: "robot1",
       variant: "standing",
@@ -67,20 +75,39 @@ describe("pixel office room layout", () => {
     expect(scene.overflowCount).toBe(3);
   });
 
-  it("places members like the official scene example", () => {
+  it("keeps the generated seat ring around the conference table", () => {
     const xs = PIXEL_OFFICE_SEATS.map((seat) => seat.x);
     const ys = PIXEL_OFFICE_SEATS.map((seat) => seat.y);
-    const seatByKey = new Map(PIXEL_OFFICE_SEATS.map((seat) => [seat.key, seat]));
 
-    expect(Math.min(...xs)).toBeGreaterThanOrEqual(12);
-    expect(Math.max(...xs)).toBeLessThanOrEqual(88);
-    expect(Math.min(...ys)).toBeGreaterThanOrEqual(26);
-    expect(Math.max(...ys)).toBeLessThanOrEqual(78);
-    expect(seatByKey.get("lead")).toMatchObject({ x: 38, y: 72 });
-    expect(seatByKey.get("left-top")).toMatchObject({ x: 62, y: 72 });
-    expect(seatByKey.get("right-top")).toMatchObject({ x: 30, y: 64 });
-    expect(seatByKey.get("right-mid")!.x).toBeGreaterThan(70);
-    expect(seatByKey.get("front")!.y).toBeGreaterThan(68);
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(11);
+    expect(Math.max(...xs)).toBeLessThanOrEqual(80);
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(18);
+    expect(Math.max(...ys)).toBeLessThanOrEqual(65);
+    expect(PIXEL_OFFICE_SEATS[0]).toMatchObject({ key: "conference-0" });
+    expect(PIXEL_OFFICE_SEATS[0].x).toBeCloseTo(45.16, 2);
+    expect(PIXEL_OFFICE_SEATS[0].y).toBeCloseTo(64.64, 2);
+    expect(PIXEL_OFFICE_SEATS[3].x).toBeCloseTo(11.25, 2);
+    expect(PIXEL_OFFICE_SEATS[3].y).toBeCloseTo(44.29, 2);
+    expect(PIXEL_OFFICE_SEATS[6].x).toBeCloseTo(45.16, 2);
+    expect(PIXEL_OFFICE_SEATS[6].y).toBeCloseTo(18.75, 2);
+    expect(PIXEL_OFFICE_SEATS[9].x).toBeCloseTo(79.06, 2);
+    expect(PIXEL_OFFICE_SEATS[9].y).toBeCloseTo(44.29, 2);
+  });
+
+  it("keeps every supported member count outside the table collision box", () => {
+    for (let count = 1; count <= pixelOfficeSeatCapacity; count += 1) {
+      const scene = buildPixelOfficeScene(
+        buildConferenceRingSeatInputs(
+          Array.from({ length: count }, (_, index) =>
+            member(`uid-${count}-${index}`, `Member ${index}`),
+          ),
+        ),
+      );
+
+      expect(scene.members.some((item) => seatOverlapsConferenceTable(item.seat))).toBe(
+        false,
+      );
+    }
   });
 
   it("maps humans and machine entities to different sprite variants", () => {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 import re
 import time
 import uuid
@@ -17,8 +18,10 @@ from aln.app.adapters.prompts import AGENT_HANDLER_PROMPT_TEMPLATE
 from aln.app.schemas.token_usage import TokenUsageRecord
 from aln.app.service.session_service import SessionService
 from aln.app.service.token_usage_service import TokenUsageService
+from fp import EntityCard, FPAddress
 from fp.core.session import Session, SessionKind
 from fp.handler import BaseHandler, HandlerConfig
+from fp.mailbox import Mailbox
 from fp.message import InvokePayload, Message, MessageKind
 from fp.utils.storage import get_storage_manager
 
@@ -32,6 +35,14 @@ class QueuedMessage:
 
     session_id: str
     message: Message
+
+
+@dataclass(slots=True)
+class ProviderReplyTarget:
+    """Target inferred from the message that woke the provider CLI."""
+
+    message: Message
+    is_group: bool
 
 
 def build_agent_system_prompt(entity: Entity) -> str:
@@ -158,6 +169,17 @@ class AgentHandler(BaseHandler):
         self._update_system_prompt()
         prompt = self._format_batch_prompt(messages)
         provider_session_id = self._get_provider_session_id(session_id)
+        provider_session_seed = self._provider_session_seed(session_id)
+        reply_target = self._infer_provider_reply_target(messages)
+        outbound_before = self._outbound_mail_count() if reply_target else None
+
+        if self._is_legacy_provider_session_id(session_id, provider_session_id):
+            logger.warning(
+                f"[{self.entity.name}] Ignoring legacy provider_session_id={provider_session_id} "
+                f"for session_id={session_id}; provider sessions are now entity-scoped"
+            )
+            self._clear_provider_session_id(session_id)
+            provider_session_id = None
 
         logger.info(
             f"{self._msgloop_prefix()} batch_detail "
@@ -170,7 +192,7 @@ class AgentHandler(BaseHandler):
             self.adapter.run_turn,
             prompt,
             self.config,
-            session_id=session_id,
+            session_id=provider_session_seed,
             provider_session_id=provider_session_id,
             system_prompt=self._system_prompt,
             entity_name=self.entity.name,
@@ -190,7 +212,7 @@ class AgentHandler(BaseHandler):
                     self.adapter.run_turn,
                     prompt,
                     self.config,
-                    session_id=session_id,
+                    session_id=provider_session_seed,
                     provider_session_id=None,
                     system_prompt=self._system_prompt,
                     entity_name=self.entity.name,
@@ -199,7 +221,7 @@ class AgentHandler(BaseHandler):
             elif not provider_session_id and "already in use" in error_msg:
                 existing_id = self._extract_session_id_from_error(str(exc))
                 if not existing_id:
-                    existing_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, session_id))
+                    existing_id = self._provider_session_uuid(provider_session_seed)
                 logger.warning(
                     f"[{self.entity.name}] Session {existing_id} already in use, "
                     f"resuming existing conversation"
@@ -209,7 +231,7 @@ class AgentHandler(BaseHandler):
                     self.adapter.run_turn,
                     prompt,
                     self.config,
-                    session_id=session_id,
+                    session_id=provider_session_seed,
                     provider_session_id=existing_id,
                     system_prompt=None,
                     entity_name=self.entity.name,
@@ -220,6 +242,12 @@ class AgentHandler(BaseHandler):
 
         self._save_provider_session_id(session_id, result.provider_session_id)
         self._record_token_usage(session_id, messages, result)
+        await self._send_provider_text_reply(
+            session_id=session_id,
+            result=result,
+            target=reply_target,
+            outbound_before=outbound_before,
+        )
 
         if result.return_code != 0:
             logger.warning(
@@ -262,6 +290,128 @@ class AgentHandler(BaseHandler):
             f"session_id={session_id} provider={provider} total={record.total_tokens}"
         )
 
+    async def _send_provider_text_reply(
+        self,
+        *,
+        session_id: str,
+        result: CLIResult,
+        target: ProviderReplyTarget | None,
+        outbound_before: int | None,
+    ) -> None:
+        """Send provider text back through ALN when the CLI did not send mail."""
+        text = result.text.strip()
+        if result.return_code != 0 or not text or target is None or outbound_before is None:
+            return
+
+        if self._outbound_mail_count() > outbound_before:
+            logger.debug(
+                f"[{self.entity.name}] Provider already sent ALN mail; skip text fallback"
+            )
+            return
+
+        try:
+            if target.is_group:
+                await self._send_provider_group_reply(session_id, text)
+            else:
+                await self._send_provider_direct_reply(session_id, text, target.message)
+        except Exception as exc:
+            logger.warning(f"[{self.entity.name}] Failed to auto-send provider reply: {exc}")
+
+    def _infer_provider_reply_target(self, messages: list[Message]) -> ProviderReplyTarget | None:
+        """Infer whether provider text should reply to a direct sender or group."""
+        if not messages:
+            return None
+
+        message = messages[-1]
+        if self._group_metadata(message) is not None:
+            return ProviderReplyTarget(message=message, is_group=True)
+
+        return (
+            ProviderReplyTarget(message=message, is_group=False)
+            if self._sender_address(message) is not None
+            else None
+        )
+
+    def _outbound_mail_count(self) -> int:
+        """Return the current outbound mailbox size for duplicate detection."""
+        mailbox_path = getattr(self.entity, "mailbox_path", None)
+        if not isinstance(mailbox_path, str | Path):
+            return 0
+        mailbox = Mailbox(self.entity.uid, Path(mailbox_path))
+        return len(mailbox.list_mails(direction="outbound"))
+
+    async def _send_provider_direct_reply(
+        self,
+        session_id: str,
+        text: str,
+        source_message: Message,
+    ) -> None:
+        """Turn provider text into a direct ALN reply."""
+        sender_address = self._sender_address(source_message)
+        if sender_address is None:
+            return
+
+        reply = Message(
+            kind=MessageKind.INVOKE,
+            payload=InvokePayload(text=text, session_id=session_id),
+            metadata={"provider_text_fallback": True},
+        )
+        await self.entity.send_message(
+            to=self._reply_destination(sender_address),
+            message=reply,
+        )
+
+    async def _send_provider_group_reply(self, session_id: str, text: str) -> None:
+        """Turn provider text into a group ALN reply."""
+        service = SessionService(self.entity)
+        session = service.get_group_session(session_id)
+        sender_member = service.require_group_send_permission(session)
+
+        host = getattr(self.entity, "host", None)
+        if host is not None:
+            SessionService.ensure_local_group_member_friendships(host, session)
+
+        reply = Message(
+            kind=MessageKind.INVOKE,
+            payload=InvokePayload(text=text, session_id=session.session_id),
+            metadata=service.build_group_message_metadata(session, sender_member),
+        )
+
+        for member in SessionService.active_group_members(session):
+            address_value = member.get("address")
+            if not isinstance(address_value, str):
+                continue
+            if address_value == self.entity.address.address:
+                continue
+            await self.entity.send_message(
+                to=self._reply_destination(address_value),
+                message=reply,
+            )
+
+    def _reply_destination(self, address: str) -> EntityCard | FPAddress:
+        """Resolve a reply destination, preferring known cards for encryption."""
+        fp_address = FPAddress(address=address)
+        friend = self.entity.friends.get(fp_address.entity_uid)
+        if friend is not None and friend.address.address == fp_address.address:
+            return friend
+
+        host = getattr(self.entity, "host", None)
+        get_entity = getattr(host, "get_entity", None)
+        if callable(get_entity):
+            local_entity = get_entity(fp_address.entity_uid)
+            if local_entity is not None:
+                return local_entity.entity_card
+        return fp_address
+
+    @staticmethod
+    def _sender_address(message: Message) -> str | None:
+        """Return a normalized sender address from message metadata."""
+        sender_address = message.metadata.get("sender_address")
+        if not isinstance(sender_address, str):
+            return None
+        normalized = sender_address.strip()
+        return normalized or None
+
     def _group_messages_by_session(
         self, queued_messages: list[QueuedMessage]
     ) -> dict[str, list[Message]]:
@@ -269,6 +419,26 @@ class AgentHandler(BaseHandler):
         for queued_message in queued_messages:
             grouped.setdefault(queued_message.session_id, []).append(queued_message.message)
         return grouped
+
+    def _provider_session_seed(self, session_id: str) -> str:
+        """Return the provider-side session seed for this entity and FP session."""
+        return f"{self.entity.uid}:{session_id}"
+
+    @staticmethod
+    def _provider_session_uuid(seed: str) -> str:
+        """Return the deterministic UUID used by UUID-only providers."""
+        return str(uuid.uuid5(uuid.NAMESPACE_DNS, seed))
+
+    def _is_legacy_provider_session_id(
+        self,
+        session_id: str,
+        provider_session_id: str | None,
+    ) -> bool:
+        """Detect pre-entity-scoped Claude session ids saved in local sessions."""
+        if getattr(self, "provider", None) != "claude" or not provider_session_id:
+            return False
+        legacy_id = self._provider_session_uuid(session_id)
+        return provider_session_id == legacy_id
 
     def _extract_payload_session_id(self, message: Message) -> str | None:
         if isinstance(message.payload, InvokePayload):

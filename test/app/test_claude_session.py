@@ -15,7 +15,7 @@ import uuid
 import pytest
 
 from aln.app.adapters.cli_adapter import CLIAdapter, CLIMapping, CLIResult
-from fp.handler import HandlerConfig
+from test.app.handler_helpers import make_handler_config
 
 CLAUDE_AVAILABLE = shutil.which("claude") is not None
 skip_no_claude = pytest.mark.skipif(not CLAUDE_AVAILABLE, reason="claude CLI not installed")
@@ -23,16 +23,6 @@ skip_no_claude = pytest.mark.skipif(not CLAUDE_AVAILABLE, reason="claude CLI not
 
 def _make_adapter() -> CLIAdapter:
     return CLIAdapter(provider="claude")
-
-
-def _make_config(**overrides) -> HandlerConfig:
-    defaults = dict(
-        trust_level="fully_trusted",
-        interaction_mode="batch",
-        output_format="json",
-    )
-    defaults.update(overrides)
-    return HandlerConfig.from_dict(defaults)
 
 
 # ── Unit tests (no CLI needed) ──
@@ -50,7 +40,7 @@ class TestCLIMappingLoadsCorrectly:
 
     def test_resume_command_includes_session_id(self):
         adapter = _make_adapter()
-        config = _make_config()
+        config = make_handler_config()
         cmd = adapter._build_command(
             prompt="hello",
             config=config,
@@ -63,7 +53,7 @@ class TestCLIMappingLoadsCorrectly:
 
     def test_new_session_command_has_no_resume_flag(self):
         adapter = _make_adapter()
-        config = _make_config()
+        config = make_handler_config()
         cmd = adapter._build_command(
             prompt="hello",
             config=config,
@@ -109,7 +99,7 @@ class TestClaudeSessionLifecycle:
     def test_new_session_returns_session_id(self):
         """First turn should create a new conversation and return a session_id."""
         adapter = _make_adapter()
-        config = _make_config(max_budget_usd=0.05)
+        config = make_handler_config(max_budget_usd=0.05)
         result = adapter.run_turn(
             prompt="Reply with exactly: SESSION_TEST_OK",
             config=config,
@@ -123,7 +113,7 @@ class TestClaudeSessionLifecycle:
     def test_resume_with_valid_session(self):
         """Resume should work with a session_id from a previous turn."""
         adapter = _make_adapter()
-        config = _make_config(max_budget_usd=0.05)
+        config = make_handler_config(max_budget_usd=0.05)
         run_id = uuid.uuid4().hex[:8]
 
         # Turn 1: create session
@@ -152,7 +142,7 @@ class TestClaudeSessionLifecycle:
     def test_resume_with_stale_session_raises(self):
         """Resume with a fake/stale session_id should raise RuntimeError."""
         adapter = _make_adapter()
-        config = _make_config(max_budget_usd=0.05)
+        config = make_handler_config(max_budget_usd=0.05)
         with pytest.raises(RuntimeError, match="(?i)no conversation found"):
             adapter.run_turn(
                 prompt="hello",
@@ -184,7 +174,7 @@ class TestAgentHandlerRetryOnStaleSession:
         handler = AgentHandler.__new__(AgentHandler)
         handler.entity = entity
         handler.adapter = MagicMock()
-        handler.config = _make_config()
+        handler.config = make_handler_config()
 
         session = handler._ensure_session("test-session")
         session.provider_session_id = "old-stale-id"
@@ -206,7 +196,7 @@ class TestAgentHandlerRetryOnStaleSession:
 
         handler = AgentHandler.__new__(AgentHandler)
         handler.entity = entity
-        handler.config = _make_config()
+        handler.config = make_handler_config()
         handler._system_prompt = "test"
         handler._queue = MagicMock()
 
@@ -295,7 +285,7 @@ class TestAgentHandlerTradeNotify:
 
         handler = AgentHandler.__new__(AgentHandler)
         handler.entity = entity
-        handler.config = _make_config()
+        handler.config = make_handler_config()
         handler._system_prompt = "test"
         handler._queue = MagicMock()
 

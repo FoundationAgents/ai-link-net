@@ -1,17 +1,47 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { ComponentProps } from "react";
 
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { PixelOfficeRoom } from "@/components/chat/pixel-office-room";
+import type { GroupMemberInfo } from "@/api";
+import type { Message } from "@/types";
 
 const GLOBAL_CSS = readFileSync(
   resolve(__dirname, "../../styles/globals.css"),
   "utf-8",
 );
 
-function renderRoom() {
+function member(entityUid: string, name: string): GroupMemberInfo {
+  return {
+    address: `host:${entityUid}`,
+    can_invite: false,
+    can_remove: false,
+    can_send: true,
+    entity_uid: entityUid,
+    host_uid: "host",
+    kind: "agent",
+    name,
+    role: "member",
+    status: "active",
+  };
+}
+
+function message(sender: string): Message {
+  return {
+    message_id: "message-1",
+    payload: { text: "A short update from this agent." },
+    recipient: ["host:human"],
+    sender,
+    timestamp: new Date("2026-06-22T00:00:00.000Z").toISOString(),
+  };
+}
+
+function renderRoom(
+  props: Partial<ComponentProps<typeof PixelOfficeRoom>> = {},
+) {
   return render(
     <PixelOfficeRoom
       roomName="Test room"
@@ -24,6 +54,7 @@ function renderRoom() {
       turnCount={0}
       tokenLabel="tokens"
       tokenCount={0}
+      {...props}
     />,
   );
 }
@@ -127,7 +158,7 @@ describe("PixelOfficeRoom", () => {
       ["vending-machine", "-1512px 0px", "144px", "144px"],
       ["bookshelf", "-1080px 0px", "144px", "144px"],
       ["coffee-machine", "-1461px -12px", "51px", "66px"],
-      ["water-dispenser", "-1305px -3px", "72px", "189px"],
+      ["water-dispenser", "-1305px -3px", "72px", "171px"],
     ];
 
     for (const [name, backgroundPosition, width, height] of props) {
@@ -148,22 +179,69 @@ describe("PixelOfficeRoom", () => {
     expect(cssRule(".pixel-room__prop--fire-extinguisher")).toContain("left: 20.3125%");
     expect(cssRule(".pixel-room__prop--fire-extinguisher")).toContain("top: 8.9286%");
     expect(cssRule(".pixel-room__prop--plant-large")).toContain("left: 3.125%");
-    expect(cssRule(".pixel-room__prop--plant-large")).toContain("top: 71.4286%");
+    expect(cssRule(".pixel-room__prop--plant-large")).toContain("top: 66.0714%");
     expect(cssRule(".pixel-room__prop--plant-small")).toContain("left: 93.75%");
-    expect(cssRule(".pixel-room__prop--plant-small")).toContain("top: 75%");
-    expect(cssRule(".pixel-room__prop--side-table")).toContain("left: 4%");
-    expect(cssRule(".pixel-room__prop--plant-tall")).toContain("left: calc(4% + 3px)");
+    expect(cssRule(".pixel-room__prop--plant-small")).toContain("top: 67.8571%");
+    expect(cssRule(".pixel-room__prop--side-table")).toContain("left: 0.5%");
+    expect(cssRule(".pixel-room__prop--plant-tall")).toContain("left: calc(0.5% + 3px)");
     expect(cssRule(".pixel-room__prop--plant-tall")).toContain("top: calc(43% - 38px)");
-    expect(cssRule(".pixel-room__prop--conference-table")).toContain("left: 50%");
+    expect(cssRule(".pixel-room__prop--conference-table")).toContain("left: 22%");
+    expect(cssRule(".pixel-room__prop--conference-table")).toContain("top: 36%");
     expect(cssRule(".pixel-room__prop--printer")).toContain("left: 53.125%");
     expect(cssRule(".pixel-room__prop--printer")).toContain("top: 7.1429%");
-    expect(cssRule(".pixel-room__prop--vending-machine")).toContain("left: 87.5%");
+    expect(cssRule(".pixel-room__prop--vending-machine")).toContain("left: 88.75%");
     expect(cssRule(".pixel-room__prop--vending-machine")).toContain("top: 5.3571%");
     expect(cssRule(".pixel-room__prop--bookshelf")).toContain("left: 6.25%");
     expect(cssRule(".pixel-room__prop--bookshelf")).toContain("top: 3.5714%");
     expect(cssRule(".pixel-room__prop--coffee-machine")).toContain("left: 81.25%");
-    expect(cssRule(".pixel-room__prop--coffee-machine")).toContain("top: 8.9286%");
-    expect(cssRule(".pixel-room__prop--water-dispenser")).toContain("left: 75%");
-    expect(cssRule(".pixel-room__prop--water-dispenser")).toContain("top: 7.1429%");
+    expect(cssRule(".pixel-room__prop--coffee-machine")).toContain("top: 15.7143%");
+    expect(cssRule(".pixel-room__prop--water-dispenser")).toContain("left: 70.3125%");
+    expect(cssRule(".pixel-room__prop--water-dispenser")).toContain("top: 5.3571%");
+  });
+
+  it("anchors speech inside the stage with clamped room coordinates", () => {
+    const { container } = renderRoom({
+      activeSpeakerUid: "reviewer",
+      latestMessage: message("host:reviewer"),
+      seats: [{ member: member("reviewer", "Reviewer"), left: 79.06, top: 44.29 }],
+    });
+    const stage = container.querySelector(".pixel-room__stage");
+    const speech = container.querySelector<HTMLElement>(".pixel-room__speech");
+
+    expect(stage?.contains(speech)).toBe(true);
+    expect(speech?.getAttribute("style")).toContain("--speech-x:");
+    expect(speech?.getAttribute("style")).toContain("--speech-y:");
+    expect(cssRule(".office3d__speech.pixel-room__speech")).toContain(
+      "left: clamp(7.5rem, var(--speech-x), calc(100% - 7.5rem))",
+    );
+    expect(cssRule(".office3d__speech.pixel-room__speech")).toContain(
+      "top: clamp(7rem, var(--speech-y), calc(100% - 0.75rem))",
+    );
+    expect(cssRule(".office3d__speech.pixel-room__speech")).toContain(
+      "translate(-50%, calc(-100% - 8px))",
+    );
+  });
+
+  it("maps minimap markers to the actual room coordinates", () => {
+    const { container } = renderRoom({
+      seats: [
+        { member: member("planner", "Planner"), left: 11.25, top: 35 },
+        { member: member("reviewer", "Reviewer"), left: 79.06, top: 35 },
+        { member: member("human", "Human User"), left: 45.16, top: 64.64 },
+        { member: member("candidate", "Candidate"), left: 45.16, top: 18.75 },
+      ],
+    });
+    const markers = Array.from(
+      container.querySelectorAll<HTMLElement>(".office3d__minimap span"),
+    );
+
+    expect(markers).toHaveLength(4);
+    expect(markers.map((marker) => marker.getAttribute("style"))).toEqual([
+      "left: 11.25%; top: 35%;",
+      "left: 79.06%; top: 35%;",
+      "left: 45.16%; top: 64.64%;",
+      "left: 45.16%; top: 18.75%;",
+    ]);
+    expect(cssRule(".office3d__minimap div::before")).toContain("display: none");
   });
 });

@@ -138,7 +138,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
                   kind={currentUser?.kind ?? "human"}
                   src={currentAvatarSrc}
                   size="md"
-                  className="transition-transform group-hover:scale-105"
+                  className="nav-profile-avatar transition-transform group-hover:scale-105"
                 />
               </button>
             </TooltipTrigger>
@@ -224,6 +224,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
               kind={currentUser?.kind ?? "human"}
               src={currentAvatarSrc}
               size="sm"
+              className="nav-profile-avatar"
             />
           </button>
         </div>

@@ -41,6 +41,18 @@ export interface PixelOfficeScene {
   overflowCount: number;
 }
 
+interface RoomPoint {
+  x: number;
+  y: number;
+}
+
+interface RoomRect {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+}
+
 const FALLBACK_SPRITE_KEYS: PixelOfficeSpriteKey[] = [
   "male2",
   "male3",
@@ -57,20 +69,124 @@ const SPRITE_KEY_BY_KIND: Partial<Record<string, PixelOfficeSpriteKey>> = {
   human: "male1",
 };
 
-export const PIXEL_OFFICE_SEATS: PixelOfficeSeat[] = [
-  { key: "lead", x: 38, y: 72, labelX: 38, labelY: 81, miniX: 38, miniY: 72 },
-  { key: "left-top", x: 62, y: 72, labelX: 62, labelY: 81, miniX: 62, miniY: 72 },
-  { key: "right-top", x: 30, y: 64, labelX: 30, labelY: 73, miniX: 30, miniY: 64 },
-  { key: "right-mid", x: 78, y: 29, labelX: 78, labelY: 38, miniX: 78, miniY: 29 },
-  { key: "left-bottom", x: 36, y: 70, labelX: 36, labelY: 79, miniX: 36, miniY: 70 },
-  { key: "left-mid", x: 15, y: 46, labelX: 15, labelY: 55, miniX: 15, miniY: 46 },
-  { key: "right-bottom", x: 83, y: 48, labelX: 83, labelY: 57, miniX: 83, miniY: 48 },
-  { key: "front", x: 57, y: 72, labelX: 57, labelY: 81, miniX: 57, miniY: 72 },
-  { key: "back-left", x: 31, y: 27, labelX: 31, labelY: 36, miniX: 31, miniY: 27 },
-  { key: "back-right", x: 70, y: 70, labelX: 70, labelY: 79, miniX: 70, miniY: 70 },
+const ROOM_SIZE: RoomPoint = { x: 32, y: 28 };
+const MEMBER_SPRITE_SIZE: RoomPoint = { x: 3.1, y: 3.35 };
+const MEMBER_SPEECH_GAP = 0.3;
+const CONFERENCE_TABLE_RECT: RoomRect = {
+  bottom: 17.1,
+  left: 7.04,
+  right: 24.35,
+  top: 10.08,
+};
+const CONFERENCE_RING_SLOT_TOP_LEFTS: RoomPoint[] = [
+  { x: 14.45, y: 18.1 },
+  { x: 9.2, y: 18.1 },
+  { x: 3.6, y: 15.2 },
+  { x: 3.6, y: 12.4 },
+  { x: 3.6, y: 9.8 },
+  { x: 8.6, y: 5.25 },
+  { x: 14.45, y: 5.25 },
+  { x: 20.3, y: 5.25 },
+  { x: 25.3, y: 9.8 },
+  { x: 25.3, y: 12.4 },
+  { x: 25.3, y: 15.2 },
+  { x: 19.7, y: 18.1 },
 ];
 
-export const pixelOfficeSeatCapacity = PIXEL_OFFICE_SEATS.length;
+export const pixelOfficeSeatCapacity = CONFERENCE_RING_SLOT_TOP_LEFTS.length;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function roomXToPercent(x: number): number {
+  return (x / ROOM_SIZE.x) * 100;
+}
+
+function roomYToPercent(y: number): number {
+  return (y / ROOM_SIZE.y) * 100;
+}
+
+function percentXToRoom(x: number): number {
+  return (x / 100) * ROOM_SIZE.x;
+}
+
+function percentYToRoom(y: number): number {
+  return (y / 100) * ROOM_SIZE.y;
+}
+
+function percentSeat(key: string, left: number, top: number): PixelOfficeSeat {
+  const x = clamp(left, 0, 100);
+  const y = clamp(top, 0, 100);
+
+  return {
+    key,
+    labelX: x + roomXToPercent(MEMBER_SPRITE_SIZE.x / 2),
+    labelY: y - roomYToPercent(MEMBER_SPEECH_GAP),
+    miniX: x,
+    miniY: y,
+    x,
+    y,
+  };
+}
+
+function rectsOverlap(a: RoomRect, b: RoomRect): boolean {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+function memberRect(seat: PixelOfficeSeat): RoomRect {
+  const left = percentXToRoom(seat.x);
+  const top = percentYToRoom(seat.y);
+
+  return {
+    bottom: top + MEMBER_SPRITE_SIZE.y,
+    left,
+    right: left + MEMBER_SPRITE_SIZE.x,
+    top,
+  };
+}
+
+function ringSlotIndexes(count: number): number[] {
+  const visibleCount = Math.min(Math.max(0, count), pixelOfficeSeatCapacity);
+  const usedIndexes = new Set<number>();
+
+  return Array.from({ length: visibleCount }, (_, index) => {
+    let slotIndex = Math.round((index * pixelOfficeSeatCapacity) / visibleCount) %
+      pixelOfficeSeatCapacity;
+    while (usedIndexes.has(slotIndex)) {
+      slotIndex = (slotIndex + 1) % pixelOfficeSeatCapacity;
+    }
+    usedIndexes.add(slotIndex);
+    return slotIndex;
+  });
+}
+
+function tableRingSeat(index: number, slot: RoomPoint): PixelOfficeSeat {
+  return percentSeat(`conference-${index}`, roomXToPercent(slot.x), roomYToPercent(slot.y));
+}
+
+export function buildConferenceRingSeats(count: number): PixelOfficeSeat[] {
+  return ringSlotIndexes(count).map((slotIndex, index) =>
+    tableRingSeat(index, CONFERENCE_RING_SLOT_TOP_LEFTS[slotIndex]),
+  );
+}
+
+export function seatOverlapsConferenceTable(seat: PixelOfficeSeat): boolean {
+  return rectsOverlap(memberRect(seat), CONFERENCE_TABLE_RECT);
+}
+
+export const PIXEL_OFFICE_SEATS = buildConferenceRingSeats(pixelOfficeSeatCapacity);
+
+export function buildConferenceRingSeatInputs(
+  members: GroupMemberInfo[],
+): PixelRoomSeatInput[] {
+  const seats = buildConferenceRingSeats(Math.min(members.length, pixelOfficeSeatCapacity));
+
+  return members.map((member, index) => {
+    const seat = seats[index] ?? PIXEL_OFFICE_SEATS[index % pixelOfficeSeatCapacity];
+    return { member, left: seat.x, top: seat.y };
+  });
+}
 
 function spriteSeed(member: GroupMemberInfo): number {
   return Array.from(`${member.entity_uid}:${member.name}`).reduce(
@@ -114,9 +230,9 @@ export function buildPixelOfficeScene(seats: PixelRoomSeatInput[]): PixelOfficeS
   const usedSpriteKeys = new Set<PixelOfficeSpriteKey>();
 
   return {
-    members: visibleSeats.map(({ member }, index) => ({
+    members: visibleSeats.map(({ left, member, top }, index) => ({
       member,
-      seat: PIXEL_OFFICE_SEATS[index],
+      seat: percentSeat(`conference-${index}`, left, top),
       sprite: resolveUniqueSprite(member, usedSpriteKeys),
     })),
     overflowCount: Math.max(0, seats.length - pixelOfficeSeatCapacity),

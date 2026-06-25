@@ -681,7 +681,7 @@ export function ChatArea({ contact, onBack }: ChatAreaProps) {
         <div className="px-4 md:px-5 pt-2 pb-3 border-t border-border shrink-0">
           <div
             className={cn(
-              "flex items-end gap-2 rounded-xl bg-surface p-2",
+              "chat-composer flex items-end gap-2 rounded-xl bg-surface p-2",
               "border border-transparent",
               "focus-within:border-primary/20 transition-colors",
             )}
@@ -700,7 +700,7 @@ export function ChatArea({ contact, onBack }: ChatAreaProps) {
             />
             <Button
               size="icon"
-              className="h-8 w-8 rounded-lg shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
+              className="chat-send-button h-8 w-8 rounded-lg shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
               disabled={!input.trim() || sending}
               onClick={handleSend}
             >

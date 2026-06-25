@@ -95,7 +95,7 @@ const PROP_FRAMES = {
   vendingMachine: { source: SOURCES.props, x: 336, y: 0, width: 32, height: 32 },
   bookshelf: { source: SOURCES.props, x: 240, y: 0, width: 32, height: 32 },
   coffeeMachine: { source: SOURCES.props, x: 487, y: 4, width: 17, height: 22 },
-  waterDispenser: { source: SOURCES.props, x: 435, y: 1, width: 24, height: 63 },
+  waterDispenser: { source: SOURCES.props, x: 435, y: 1, width: 24, height: 57 },
 } satisfies Record<string, SpriteFrame>;
 
 const GENERATED_TILE_PATHS = {
@@ -135,6 +135,14 @@ function stylePercent(x: number, y: number, zIndex?: number): CSSProperties {
     top: `${y}%`,
     zIndex,
   };
+}
+
+function speechStylePercent(x: number, y: number): CSSProperties {
+  return {
+    "--speech-x": `${x}%`,
+    "--speech-y": `${y}%`,
+    zIndex: 55,
+  } as CSSProperties;
 }
 
 function usePixelRoomStageStyle(
@@ -333,7 +341,7 @@ export function PixelOfficeRoom({
     latestMessage ? extractEntityUid(latestMessage.sender) : "Speaker"
   );
   const speakerStyle = activeMember
-    ? stylePercent(activeMember.seat.labelX, Math.max(6, activeMember.seat.labelY - 28), 50)
+    ? speechStylePercent(activeMember.seat.labelX, activeMember.seat.labelY)
     : undefined;
 
   return (
@@ -355,17 +363,17 @@ export function PixelOfficeRoom({
             provider={providerByUid.get(member.member.entity_uid)}
           />
         ))}
-      </div>
 
-      {latestMessage && activeMember && speakerStyle && (
-        <div
-          className="office3d__speech pixel-room__speech"
-          style={speakerStyle}
-        >
-          <p className="office3d__speech-name">{speakerName}</p>
-          <p>{shortText(latestMessage)}</p>
-        </div>
-      )}
+        {latestMessage && activeMember && speakerStyle && (
+          <div
+            className="office3d__speech pixel-room__speech"
+            style={speakerStyle}
+          >
+            <p className="office3d__speech-name">{speakerName}</p>
+            <p>{shortText(latestMessage)}</p>
+          </div>
+        )}
+      </div>
 
       <div className="office3d__status">
         <span>{turnCount} turns</span>
