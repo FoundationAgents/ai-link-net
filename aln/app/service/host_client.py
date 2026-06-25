@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 from urllib import error, request
+from urllib.parse import urlencode
 
 from fp import EntityCard, HostWellKnown, Mail
 
@@ -457,6 +458,34 @@ class HostClient:
             expected_type=dict,
         )
 
+    def get_messages(
+        self,
+        entity_uid: str,
+        *,
+        limit: int | None = None,
+        session_id: str | None = None,
+        conversation_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read mailbox messages for one entity."""
+        params: dict[str, str | int] = {}
+        if limit is not None:
+            params["limit"] = limit
+        if session_id:
+            params["session_id"] = session_id
+        if conversation_type:
+            params["conversation_type"] = conversation_type
+
+        path = f"/api/v1/messages/{entity_uid}"
+        if params:
+            path = f"{path}?{urlencode(params)}"
+
+        response = self._request("GET", path)
+        return self._extract_data_field(
+            response,
+            context="get messages",
+            expected_type=list,
+        )
+
     def create_group_session(
         self,
         entity_uid: str,
@@ -532,6 +561,30 @@ class HostClient:
             expected_type=dict,
         )
 
+    def stop_group_session(self, entity_uid: str, session_id: str) -> dict[str, Any]:
+        """Stop a group session."""
+        response = self._request(
+            "POST",
+            f"/api/v1/entities/{entity_uid}/sessions/groups/{session_id}/stop",
+        )
+        return self._extract_data_field(
+            response,
+            context="stop group session",
+            expected_type=dict,
+        )
+
+    def resume_group_session(self, entity_uid: str, session_id: str) -> dict[str, Any]:
+        """Resume a group session."""
+        response = self._request(
+            "POST",
+            f"/api/v1/entities/{entity_uid}/sessions/groups/{session_id}/resume",
+        )
+        return self._extract_data_field(
+            response,
+            context="resume group session",
+            expected_type=dict,
+        )
+
     def delete_group_session(self, entity_uid: str, session_id: str) -> dict[str, Any]:
         """Delete a group session."""
         response = self._request(
@@ -564,6 +617,21 @@ class HostClient:
             response,
             context="send group message",
             expected_type=dict,
+        )
+
+    def get_group_history(
+        self,
+        entity_uid: str,
+        session_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read messages for one group session."""
+        return self.get_messages(
+            entity_uid,
+            limit=limit,
+            session_id=session_id,
+            conversation_type="group",
         )
 
     # ==================== Trade ====================

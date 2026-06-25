@@ -272,12 +272,26 @@ def _format_message(mail_entry: dict) -> dict | None:
         return None
 
 
+def _message_session_id(message: dict[str, Any]) -> str | None:
+    """Extract the best session id for a formatted mailbox message."""
+    payload = message.get("payload")
+    if isinstance(payload, dict):
+        raw = payload.get("session_id")
+        if isinstance(raw, str) and raw:
+            return raw
+
+    raw = message.get("group_id")
+    return raw if isinstance(raw, str) and raw else None
+
+
 @router.get("/{entity_uid}", response_model=StandardResponse[list[dict[str, Any]]])
 @exception_wrapper(catch_http_exc=True)
 async def get_messages(
     entity_uid: str,
     current_host: Annotated[Host, Depends(get_host_runtime)],
-    limit: int | None = Query(default=None, ge=1),
+    limit: Annotated[int | None, Query(ge=1)] = None,
+    session_id: Annotated[str | None, Query()] = None,
+    conversation_type: Annotated[str | None, Query()] = None,
 ) -> StandardResponse[list[dict[str, Any]]]:
     """Get messages for an entity from its mailbox."""
     entity = current_host.get_entity(entity_uid)
@@ -286,14 +300,19 @@ async def get_messages(
 
     mailbox = Mailbox(entity_uid, Path(entity.mailbox_path))
     mails = mailbox.list_mails()
-    if limit is not None and len(mails) > limit:
-        mails = mails[-limit:]
-
-    messages = []
+    messages: list[dict[str, Any]] = []
     for mail_entry in mails:
         formatted = _format_message(mail_entry)
-        if formatted:
-            messages.append(formatted)
+        if formatted is None:
+            continue
+        if conversation_type is not None and formatted.get("conversation_type") != conversation_type:
+            continue
+        if session_id is not None and _message_session_id(formatted) != session_id:
+            continue
+        messages.append(formatted)
+
+    if limit is not None and len(messages) > limit:
+        messages = messages[-limit:]
 
     return StandardResponse[list[dict[str, Any]]](
         success=True,

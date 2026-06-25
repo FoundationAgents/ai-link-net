@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import click
 from fp.utils import storage as fp_storage
 
@@ -25,7 +27,8 @@ def command(ctx: click.Context) -> None:
 
       aln group create -e default:Alice -n "Launch room" --member default:Coder --member default:Reviewer
       aln group list -e default:Alice
-      aln group send -e default:Alice --session group:abc123 -m '{"text":"Please compare plans."}'
+      aln group send -e default:Alice --session group:abc123 --text "Please compare plans."
+      aln group history -e default:Alice --session group:abc123
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -37,6 +40,23 @@ def _client_for_entity(entity_spec: str) -> tuple[HostClient, str]:
     storage = fp_storage.get_storage_manager()
     host_url = storage.get_host_url(card.host_uid)
     return HostClient(base_url=host_url), card.entity_uid
+
+
+def _message_text(message: dict) -> str:
+    """Extract display text from a formatted mailbox message."""
+    payload = message.get("payload")
+    if isinstance(payload, dict):
+        text = payload.get("text")
+        if isinstance(text, str):
+            return text
+        return json.dumps(payload, ensure_ascii=False)
+    return ""
+
+
+def _message_sender(message: dict) -> str:
+    """Extract sender label from a formatted mailbox message."""
+    sender = message.get("sender")
+    return sender if isinstance(sender, str) and sender else "unknown"
 
 
 @command.command("create", help="Create a group chat session.")
@@ -105,7 +125,7 @@ def list_command(entity_spec: str, cli_printer: CliPrinter) -> None:
         return
 
     for group in groups:
-        cli_printer.echo(f"{group.get('session_id')}  {group.get('name')}")
+        cli_printer.echo(f"{group.get('session_id')}  {group.get('name')}  status={group.get('status', 'active')}")
         for member in group.get("members") or []:
             cli_printer.echo(
                 f"  - {member.get('name')} ({member.get('address')}) "
@@ -180,3 +200,157 @@ def send_command(
     cli_printer.echo("Group message sent successfully")
     cli_printer.echo(f"  Message ID: {result.get('message_id')}")
     cli_printer.echo(f"  Recipients: {result.get('recipient_count')}")
+
+
+@command.command("history", help="Show group chat history.")
+@click.option(
+    "-e",
+    "--entity",
+    "entity_spec",
+    required=True,
+    help="Entity whose mailbox should be queried.",
+)
+@click.option("--session", "session_id", required=True, help="Group session id.")
+@click.option("--limit", type=int, default=None, help="Maximum messages to show. Omit to show all history.")
+@cli_exception_wrapper(error_message="Failed to get group history")
+@get_cli_printer
+def history_command(
+    entity_spec: str,
+    session_id: str,
+    limit: int | None,
+    cli_printer: CliPrinter,
+) -> None:
+    """Show messages for one group session."""
+    client, entity_uid = _client_for_entity(entity_spec)
+    messages = client.get_group_history(
+        entity_uid=entity_uid,
+        session_id=session_id,
+        limit=limit,
+    )
+
+    if not messages:
+        cli_printer.echo("No group messages found")
+        return
+
+    for message in messages:
+        timestamp = message.get("timestamp") or "-"
+        direction = message.get("direction") or "-"
+        sender = _message_sender(message)
+        text = _message_text(message)
+        cli_printer.echo(f"[{timestamp}] {direction} {sender}")
+        cli_printer.echo(text)
+        cli_printer.echo("")
+
+
+@command.command("invite", help="Invite friends into a group chat session.")
+@click.option(
+    "-e",
+    "--entity",
+    "entity_spec",
+    required=True,
+    help="Inviting entity (must have invite permission).",
+)
+@click.option("--session", "session_id", required=True, help="Group session id.")
+@click.option(
+    "--member",
+    "members",
+    multiple=True,
+    required=True,
+    help="Friend uid, friend name, or full FP address. Repeat for multiple members.",
+)
+@cli_exception_wrapper(error_message="Failed to invite group members")
+@get_cli_printer
+def invite_command(
+    entity_spec: str,
+    session_id: str,
+    members: tuple[str, ...],
+    cli_printer: CliPrinter,
+) -> None:
+    """Invite friends into an existing group session."""
+    client, entity_uid = _client_for_entity(entity_spec)
+    group = client.add_group_members(
+        entity_uid=entity_uid,
+        session_id=session_id,
+        members=list(members),
+    )
+    cli_printer.echo("Group members invited successfully")
+    cli_printer.echo(f"  Session: {group.get('session_id')}")
+    cli_printer.echo(f"  Members: {len(group.get('members') or [])}")
+
+
+@command.command("remove", help="Remove one member from a group chat session.")
+@click.option(
+    "-e",
+    "--entity",
+    "entity_spec",
+    required=True,
+    help="Removing entity (must have remove permission).",
+)
+@click.option("--session", "session_id", required=True, help="Group session id.")
+@click.option("--member", "member", required=True, help="Member uid, name, or full FP address.")
+@cli_exception_wrapper(error_message="Failed to remove group member")
+@get_cli_printer
+def remove_command(
+    entity_spec: str,
+    session_id: str,
+    member: str,
+    cli_printer: CliPrinter,
+) -> None:
+    """Remove one active member from an existing group session."""
+    client, entity_uid = _client_for_entity(entity_spec)
+    group = client.remove_group_member(
+        entity_uid=entity_uid,
+        session_id=session_id,
+        member=member,
+    )
+    cli_printer.echo("Group member removed successfully")
+    cli_printer.echo(f"  Session: {group.get('session_id')}")
+    cli_printer.echo(f"  Members: {len(group.get('members') or [])}")
+
+
+@command.command("stop", help="Stop a group chat session.")
+@click.option(
+    "-e",
+    "--entity",
+    "entity_spec",
+    required=True,
+    help="Entity with group remove/admin permission.",
+)
+@click.option("--session", "session_id", required=True, help="Group session id.")
+@cli_exception_wrapper(error_message="Failed to stop group")
+@get_cli_printer
+def stop_command(
+    entity_spec: str,
+    session_id: str,
+    cli_printer: CliPrinter,
+) -> None:
+    """Stop a group session without deleting its history."""
+    client, entity_uid = _client_for_entity(entity_spec)
+    group = client.stop_group_session(entity_uid=entity_uid, session_id=session_id)
+    cli_printer.echo("Group stopped successfully")
+    cli_printer.echo(f"  Session: {group.get('session_id')}")
+    cli_printer.echo(f"  Status: {group.get('status')}")
+
+
+@command.command("resume", help="Resume a stopped group chat session.")
+@click.option(
+    "-e",
+    "--entity",
+    "entity_spec",
+    required=True,
+    help="Entity with group remove/admin permission.",
+)
+@click.option("--session", "session_id", required=True, help="Group session id.")
+@cli_exception_wrapper(error_message="Failed to resume group")
+@get_cli_printer
+def resume_command(
+    entity_spec: str,
+    session_id: str,
+    cli_printer: CliPrinter,
+) -> None:
+    """Resume a stopped group session."""
+    client, entity_uid = _client_for_entity(entity_spec)
+    group = client.resume_group_session(entity_uid=entity_uid, session_id=session_id)
+    cli_printer.echo("Group resumed successfully")
+    cli_printer.echo(f"  Session: {group.get('session_id')}")
+    cli_printer.echo(f"  Status: {group.get('status')}")

@@ -24,6 +24,10 @@ GROUP_ROLES = {GROUP_OWNER, GROUP_ADMIN, GROUP_MEMBER, GROUP_OBSERVER}
 GROUP_ACTIVE = "active"
 GROUP_REMOVED = "removed"
 
+GROUP_SESSION_ACTIVE = "active"
+GROUP_SESSION_STOPPED = "stopped"
+GROUP_SESSION_STATUSES = {GROUP_SESSION_ACTIVE, GROUP_SESSION_STOPPED}
+
 GROUP_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
     GROUP_OWNER: {"can_send": True, "can_invite": True, "can_remove": True},
     GROUP_ADMIN: {"can_send": True, "can_invite": True, "can_remove": True},
@@ -72,6 +76,17 @@ class SessionService:
         """Return group members keyed by FP address."""
         members = session.metadata.get("members")
         return members if isinstance(members, dict) else {}
+
+    @staticmethod
+    def group_status(session: Session) -> str:
+        """Return normalized group conversation status."""
+        status = session.metadata.get("status")
+        return status if status in GROUP_SESSION_STATUSES else GROUP_SESSION_ACTIVE
+
+    @staticmethod
+    def is_group_stopped(session: Session) -> bool:
+        """Return whether a group conversation is stopped."""
+        return SessionService.group_status(session) == GROUP_SESSION_STOPPED
 
     @staticmethod
     def active_group_members(session: Session) -> list[dict]:
@@ -170,6 +185,7 @@ class SessionService:
                 "session_type": GROUP_SESSION_TYPE,
                 "group_id": session_id,
                 "name": name,
+                "status": GROUP_SESSION_ACTIVE,
                 "created_by": self.entity.address.address,
                 "members": member_entries,
                 "policy": {
@@ -209,7 +225,13 @@ class SessionService:
 
     def require_group_send_permission(self, session: Session) -> dict:
         """Return this entity's group member record if it can send."""
+        self.require_group_active(session)
         return self._require_group_permission(session, "can_send", "send in this group")
+
+    def require_group_active(self, session: Session) -> None:
+        """Raise when a group conversation is stopped."""
+        if self.is_group_stopped(session):
+            raise HTTPException(status_code=409, detail=f"Group session is stopped: {session.session_id}")
 
     def require_group_invite_permission(self, session: Session) -> dict:
         """Return this entity's group member record if it can invite."""
@@ -297,6 +319,22 @@ class SessionService:
         self.entity.save()
         return session, member_address
 
+    def stop_group_session(self, session_id: str) -> Session:
+        """Stop a group session without deleting membership or history."""
+        session = self.get_group_session(session_id)
+        self.require_group_remove_permission(session)
+        self._set_group_status(session, GROUP_SESSION_STOPPED)
+        self.entity.save()
+        return session
+
+    def resume_group_session(self, session_id: str) -> Session:
+        """Resume a stopped group session."""
+        session = self.get_group_session(session_id)
+        self.require_group_remove_permission(session)
+        self._set_group_status(session, GROUP_SESSION_ACTIVE)
+        self.entity.save()
+        return session
+
     def build_group_message_metadata(self, session: Session, sender_member: dict) -> dict:
         """Build portable group metadata for a message."""
         return {
@@ -305,6 +343,7 @@ class SessionService:
             "group": {
                 "session_id": session.session_id,
                 "name": session.name,
+                "status": self.group_status(session),
                 "created_by": session.metadata.get("created_by"),
                 "sender_role": sender_member.get("role", GROUP_MEMBER),
                 "members": self.group_members(session),
@@ -332,6 +371,11 @@ class SessionService:
         ]
         now = time.time()
         existing = self.entity.sessions.get(session_id)
+        status = group_meta.get("status")
+        if status not in GROUP_SESSION_STATUSES:
+            status = self.group_status(existing) if existing is not None else GROUP_SESSION_ACTIVE
+        if existing is not None and self.is_group_stopped(existing) and status != GROUP_SESSION_STOPPED:
+            status = GROUP_SESSION_STOPPED
         session = Session(
             session_id=session_id,
             name=group_meta.get("name") or session_id,
@@ -341,6 +385,7 @@ class SessionService:
                 "session_type": GROUP_SESSION_TYPE,
                 "group_id": session_id,
                 "name": group_meta.get("name") or session_id,
+                "status": status,
                 "created_by": group_meta.get("created_by"),
                 "members": members_raw,
                 "policy": group_meta.get("policy") if isinstance(group_meta.get("policy"), dict) else {},
@@ -523,6 +568,13 @@ class SessionService:
             for address, member in sorted(members.items())
             if member.get("status", GROUP_ACTIVE) == GROUP_ACTIVE
         ]
+        session.updated_at = time.time()
+
+    def _set_group_status(self, session: Session, status: str) -> None:
+        """Set group conversation status."""
+        if status not in GROUP_SESSION_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid group status: {status}")
+        session.metadata["status"] = status
         session.updated_at = time.time()
 
     def _member_entry_from_entity(self, entity: Entity, role: str) -> dict:

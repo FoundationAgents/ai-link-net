@@ -29,6 +29,14 @@ const itemVariants = {
   },
 };
 
+function isHumanEntity(entity: Contact | UserProfile): boolean {
+  return entity.kind === "human";
+}
+
+function loadHumanUsers(): UserProfile[] {
+  return loadSavedUsers().filter(isHumanEntity);
+}
+
 export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -37,7 +45,7 @@ export function LoginPage() {
 
   const [hostUrl, setHostUrl] = useState("http://localhost:7001");
   const [entities, setEntities] = useState<Contact[]>([]);
-  const [savedUsers, setSavedUsers] = useState<UserProfile[]>(loadSavedUsers());
+  const [savedUsers, setSavedUsers] = useState<UserProfile[]>(loadHumanUsers());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showEntities, setShowEntities] = useState(false);
@@ -49,21 +57,25 @@ export function LoginPage() {
     if (!uid || !url) return;
 
     const decodedUrl = decodeURIComponent(url);
+    setHostUrl(decodedUrl);
     fetch(`${decodedUrl}/api/v1/entities/${uid}`)
       .then((res) => res.json())
       .then((json: { data?: { name?: string; kind?: string; metadata?: Record<string, unknown> } }) => {
+        if (json.data?.kind !== "human") {
+          setError("Only human users can sign in");
+          return;
+        }
         login({
           entity_uid: uid,
           name: json.data?.name ?? uid,
-          kind: (json.data?.kind as UserProfile["kind"]) ?? "human",
+          kind: "human",
           host_url: decodedUrl,
           metadata: json.data?.metadata,
         });
         navigate("/chat");
       })
       .catch(() => {
-        login({ entity_uid: uid, name: uid, kind: "human", host_url: decodedUrl });
-        navigate("/chat");
+        setError("Cannot verify human user");
       });
   }, [searchParams, login, navigate]);
 
@@ -78,8 +90,12 @@ export function LoginPage() {
       const apiBase = hostUrl.replace(/\/$/, "");
       const res = await fetch(`${apiBase}/api/v1/entities`);
       const json = (await res.json()) as { data?: Contact[] };
-      setEntities(json.data ?? []);
+      const humanEntities = (json.data ?? []).filter(isHumanEntity);
+      setEntities(humanEntities);
       setShowEntities(true);
+      if (humanEntities.length === 0) {
+        setError("No human users found on this host");
+      }
     } catch {
       setError("Cannot connect to host");
     } finally {
@@ -88,6 +104,10 @@ export function LoginPage() {
   }
 
   function handleSelectEntity(entity: Contact) {
+    if (!isHumanEntity(entity)) {
+      setError("Only human users can sign in");
+      return;
+    }
     login({
       entity_uid: entity.entity_uid,
       name: entity.name,
@@ -99,13 +119,17 @@ export function LoginPage() {
   }
 
   function handleSelectSaved(user: UserProfile) {
+    if (!isHumanEntity(user)) {
+      setError("Only human users can sign in");
+      return;
+    }
     login(user);
     navigate("/chat");
   }
 
   function handleRemoveSaved(uid: string) {
     removeSavedUser(uid);
-    setSavedUsers(loadSavedUsers());
+    setSavedUsers(loadHumanUsers());
   }
 
   return (
@@ -242,7 +266,7 @@ export function LoginPage() {
                 className="mt-4 space-y-1"
               >
                 <h2 className="text-xs font-medium text-muted-foreground mb-2">
-                  Select Entity
+                  Select Human User
                 </h2>
                 {entities.map((entity, i) => (
                   <motion.button

@@ -53,6 +53,13 @@ List groups:
 aln group list -e default:Alice
 ```
 
+Show one group's history from an entity mailbox:
+
+```powershell
+aln group history -e default:Alice --session group:abc123
+aln group history -e default:Alice --session group:abc123 --limit 100
+```
+
 Send a plain text group message:
 
 ```powershell
@@ -69,6 +76,20 @@ aln group send -e default:Alice --session group:abc123 --text-env ALN_MESSAGE
 Remove-Item Env:ALN_MESSAGE
 ```
 
+Invite or remove members:
+
+```powershell
+aln group invite -e default:Alice --session group:abc123 --member default:Designer
+aln group remove -e default:Alice --session group:abc123 --member default:Reviewer
+```
+
+Stop and resume a group without deleting its members or history:
+
+```powershell
+aln group stop -e default:Alice --session group:abc123
+aln group resume -e default:Alice --session group:abc123
+```
+
 ## API Surface
 
 Group session endpoints live under:
@@ -83,12 +104,20 @@ Supported operations:
 - `POST /groups`: create a group room.
 - `POST /groups/{session_id}/members`: invite members.
 - `POST /groups/{session_id}/members/remove`: remove one member.
+- `POST /groups/{session_id}/stop`: stop sending and agent processing for a room.
+- `POST /groups/{session_id}/resume`: resume a stopped room.
 - `DELETE /groups/{session_id}`: delete the room locally for known members.
 
 Message sending uses:
 
 ```text
 POST /api/v1/messages/send_group
+```
+
+Group history reads use:
+
+```text
+GET /api/v1/messages/{entity_uid}?conversation_type=group&session_id={session_id}
 ```
 
 Token usage reads use:

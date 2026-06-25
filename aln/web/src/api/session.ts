@@ -11,6 +11,7 @@ export interface SessionInfo {
   updated_at: number;
   message_count: number;
   session_type?: "direct" | "group" | string;
+  status?: "active" | "stopped" | string;
   created_by?: string | null;
   members?: GroupMemberInfo[];
 }
@@ -129,6 +130,26 @@ export async function removeGroupMember(
   const { data } = await apiClient.post<StandardResponse<SessionInfo>>(
     `/entities/${entityUid}/sessions/groups/${sessionId}/members/remove`,
     { member },
+  );
+  return unwrap(data);
+}
+
+export async function stopGroupSession(
+  entityUid: string,
+  sessionId: string,
+): Promise<SessionInfo> {
+  const { data } = await apiClient.post<StandardResponse<SessionInfo>>(
+    `/entities/${entityUid}/sessions/groups/${sessionId}/stop`,
+  );
+  return unwrap(data);
+}
+
+export async function resumeGroupSession(
+  entityUid: string,
+  sessionId: string,
+): Promise<SessionInfo> {
+  const { data } = await apiClient.post<StandardResponse<SessionInfo>>(
+    `/entities/${entityUid}/sessions/groups/${sessionId}/resume`,
   );
   return unwrap(data);
 }

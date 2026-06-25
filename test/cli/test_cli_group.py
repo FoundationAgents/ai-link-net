@@ -277,3 +277,219 @@ def test_group_send_rejects_invalid_json(runner: CliRunner) -> None:
 
     assert result.exit_code == 1
     assert "Invalid JSON message" in result.output
+
+
+@patch("fp.utils.storage.get_storage_manager")
+@patch("aln.cli.group.HostClient")
+@patch("aln.cli.group.resolve_entity_card")
+def test_group_history_calls_host_client(
+    mock_resolve_entity_card,
+    mock_host_client_cls,
+    mock_get_storage,
+    runner: CliRunner,
+) -> None:
+    """`aln group history` should query one group session mailbox view."""
+    from_card = _build_entity_card(name="alice", entity_uid="alice_uid", host_uid="host1")
+    mock_resolve_entity_card.return_value = from_card
+
+    mock_storage = MagicMock()
+    mock_storage.get_host_url.return_value = "http://0.0.0.0:7001"
+    mock_get_storage.return_value = mock_storage
+
+    mock_client = MagicMock()
+    mock_client.get_group_history.return_value = [
+        {
+            "timestamp": "2026-06-24T12:00:00",
+            "direction": "inbound",
+            "sender": "host1:bob_uid",
+            "payload": {"text": "hello group"},
+        }
+    ]
+    mock_host_client_cls.return_value = mock_client
+
+    result = runner.invoke(
+        group_command,
+        [
+            "history",
+            "-e",
+            "host1:alice",
+            "--session",
+            "group:abc123",
+            "--limit",
+            "10",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "hello group" in result.output
+    mock_client.get_group_history.assert_called_once_with(
+        entity_uid="alice_uid",
+        session_id="group:abc123",
+        limit=10,
+    )
+
+
+@patch("fp.utils.storage.get_storage_manager")
+@patch("aln.cli.group.HostClient")
+@patch("aln.cli.group.resolve_entity_card")
+def test_group_invite_calls_host_client(
+    mock_resolve_entity_card,
+    mock_host_client_cls,
+    mock_get_storage,
+    runner: CliRunner,
+) -> None:
+    """`aln group invite` should call the group membership API."""
+    from_card = _build_entity_card(name="alice", entity_uid="alice_uid", host_uid="host1")
+    mock_resolve_entity_card.return_value = from_card
+
+    mock_storage = MagicMock()
+    mock_storage.get_host_url.return_value = "http://0.0.0.0:7001"
+    mock_get_storage.return_value = mock_storage
+
+    mock_client = MagicMock()
+    mock_client.add_group_members.return_value = {"session_id": "group:abc123", "members": [{}, {}, {}]}
+    mock_host_client_cls.return_value = mock_client
+
+    result = runner.invoke(
+        group_command,
+        [
+            "invite",
+            "-e",
+            "host1:alice",
+            "--session",
+            "group:abc123",
+            "--member",
+            "bob_uid",
+            "--member",
+            "carol_uid",
+        ],
+    )
+
+    assert result.exit_code == 0
+    mock_client.add_group_members.assert_called_once_with(
+        entity_uid="alice_uid",
+        session_id="group:abc123",
+        members=["bob_uid", "carol_uid"],
+    )
+
+
+@patch("fp.utils.storage.get_storage_manager")
+@patch("aln.cli.group.HostClient")
+@patch("aln.cli.group.resolve_entity_card")
+def test_group_remove_calls_host_client(
+    mock_resolve_entity_card,
+    mock_host_client_cls,
+    mock_get_storage,
+    runner: CliRunner,
+) -> None:
+    """`aln group remove` should remove one member through the API."""
+    from_card = _build_entity_card(name="alice", entity_uid="alice_uid", host_uid="host1")
+    mock_resolve_entity_card.return_value = from_card
+
+    mock_storage = MagicMock()
+    mock_storage.get_host_url.return_value = "http://0.0.0.0:7001"
+    mock_get_storage.return_value = mock_storage
+
+    mock_client = MagicMock()
+    mock_client.remove_group_member.return_value = {"session_id": "group:abc123", "members": [{}, {}]}
+    mock_host_client_cls.return_value = mock_client
+
+    result = runner.invoke(
+        group_command,
+        [
+            "remove",
+            "-e",
+            "host1:alice",
+            "--session",
+            "group:abc123",
+            "--member",
+            "bob_uid",
+        ],
+    )
+
+    assert result.exit_code == 0
+    mock_client.remove_group_member.assert_called_once_with(
+        entity_uid="alice_uid",
+        session_id="group:abc123",
+        member="bob_uid",
+    )
+
+
+@patch("fp.utils.storage.get_storage_manager")
+@patch("aln.cli.group.HostClient")
+@patch("aln.cli.group.resolve_entity_card")
+def test_group_stop_calls_host_client(
+    mock_resolve_entity_card,
+    mock_host_client_cls,
+    mock_get_storage,
+    runner: CliRunner,
+) -> None:
+    """`aln group stop` should stop the room without deleting it."""
+    from_card = _build_entity_card(name="alice", entity_uid="alice_uid", host_uid="host1")
+    mock_resolve_entity_card.return_value = from_card
+
+    mock_storage = MagicMock()
+    mock_storage.get_host_url.return_value = "http://0.0.0.0:7001"
+    mock_get_storage.return_value = mock_storage
+
+    mock_client = MagicMock()
+    mock_client.stop_group_session.return_value = {"session_id": "group:abc123", "status": "stopped"}
+    mock_host_client_cls.return_value = mock_client
+
+    result = runner.invoke(
+        group_command,
+        [
+            "stop",
+            "-e",
+            "host1:alice",
+            "--session",
+            "group:abc123",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "stopped" in result.output
+    mock_client.stop_group_session.assert_called_once_with(
+        entity_uid="alice_uid",
+        session_id="group:abc123",
+    )
+
+
+@patch("fp.utils.storage.get_storage_manager")
+@patch("aln.cli.group.HostClient")
+@patch("aln.cli.group.resolve_entity_card")
+def test_group_resume_calls_host_client(
+    mock_resolve_entity_card,
+    mock_host_client_cls,
+    mock_get_storage,
+    runner: CliRunner,
+) -> None:
+    """`aln group resume` should re-enable a stopped room."""
+    from_card = _build_entity_card(name="alice", entity_uid="alice_uid", host_uid="host1")
+    mock_resolve_entity_card.return_value = from_card
+
+    mock_storage = MagicMock()
+    mock_storage.get_host_url.return_value = "http://0.0.0.0:7001"
+    mock_get_storage.return_value = mock_storage
+
+    mock_client = MagicMock()
+    mock_client.resume_group_session.return_value = {"session_id": "group:abc123", "status": "active"}
+    mock_host_client_cls.return_value = mock_client
+
+    result = runner.invoke(
+        group_command,
+        [
+            "resume",
+            "-e",
+            "host1:alice",
+            "--session",
+            "group:abc123",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "active" in result.output
+    mock_client.resume_group_session.assert_called_once_with(
+        entity_uid="alice_uid",
+        session_id="group:abc123",
+    )

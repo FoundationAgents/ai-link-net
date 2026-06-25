@@ -7,11 +7,13 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 from fp import EntityKind, Host, Message, MessageKind
+from fp.core.session import Session, SessionKind
 from fp.mailbox import Mailbox
 from fp.message import InvokePayload
 
 from aln.app.adapters.cli_adapter import CLIResult
 from aln.app.handlers.agent_handler import AgentHandler
+from aln.app.service.session_service import GROUP_SESSION_TYPE
 from test.app.handler_helpers import make_handler_config
 
 
@@ -89,5 +91,42 @@ def test_agent_handler_skips_provider_text_when_cli_sent_mail() -> None:
         )
         await handler._execute_batch("direct:reply", [message])
         return handler._send_provider_direct_reply.await_count
+
+    assert asyncio.run(run()) == 0
+
+
+def test_agent_handler_skips_stopped_group_messages() -> None:
+    """Stopped group messages should not enter the provider queue."""
+
+    async def run() -> int:
+        host = Host(name="StoppedGroupHub")
+        human = host.register_entity(name="Human", kind=EntityKind.HUMAN)
+        agent = host.register_entity(name="Planner", kind=EntityKind.AGENT)
+        session_id = "group:stopped"
+        agent.sessions[session_id] = Session(
+            session_id=session_id,
+            name="Stopped Room",
+            participants=[human.address, agent.address],
+            kind=SessionKind.MANUAL,
+            metadata={
+                "session_type": GROUP_SESSION_TYPE,
+                "group_id": session_id,
+                "status": "stopped",
+                "members": {},
+            },
+        )
+
+        handler = AgentHandler.__new__(AgentHandler)
+        handler.entity = agent
+        handler.adapter = MagicMock()
+        handler._queue = asyncio.Queue()
+
+        message = Message(
+            kind=MessageKind.INVOKE,
+            payload=InvokePayload(text="should not run", session_id=session_id),
+            metadata={"conversation_type": GROUP_SESSION_TYPE, "group_id": session_id},
+        )
+        await handler.handle(message)
+        return handler._queue.qsize()
 
     assert asyncio.run(run()) == 0
