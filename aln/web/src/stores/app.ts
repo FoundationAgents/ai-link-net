@@ -61,7 +61,11 @@ function persistAvatarCache(cache: Record<string, string>) {
 function loadCurrentUser(): UserProfile | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_USER);
-    return raw ? (JSON.parse(raw) as UserProfile) : null;
+    if (!raw) {
+      return null;
+    }
+    const user = JSON.parse(raw) as UserProfile;
+    return user.kind === "human" ? user : null;
   } catch {
     return null;
   }
@@ -78,13 +82,17 @@ function persistCurrentUser(user: UserProfile | null) {
 export function loadSavedUsers(): UserProfile[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_USERS);
-    return raw ? (JSON.parse(raw) as UserProfile[]) : [];
+    const users = raw ? (JSON.parse(raw) as UserProfile[]) : [];
+    return users.filter((user) => user.kind === "human");
   } catch {
     return [];
   }
 }
 
 function saveUserToList(user: UserProfile) {
+  if (user.kind !== "human") {
+    return;
+  }
   // #15: uniqueness by BOTH entity_uid AND host_url
   const users = loadSavedUsers().filter(
     (u) => !(u.entity_uid === user.entity_uid && u.host_url === user.host_url),
@@ -195,12 +203,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentHostUid: localStorage.getItem(STORAGE_KEY_HOST_UID),
 
   login(user) {
+    if (user.kind !== "human") {
+      persistCurrentUser(null);
+      set({ currentUser: null });
+      return;
+    }
     persistCurrentUser(user);
     saveUserToList(user);
     set({ currentUser: user });
     // fetch host_uid for contact classification
     getEntity(user.entity_uid)
       .then((entity) => {
+        if (entity.kind !== "human") {
+          persistCurrentUser(null);
+          set({ currentUser: null, currentHostUid: null });
+          return;
+        }
         set({ currentHostUid: entity.host_uid });
         localStorage.setItem(STORAGE_KEY_HOST_UID, entity.host_uid);
         // also update user profile with real data from server (#6)

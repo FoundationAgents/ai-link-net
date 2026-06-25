@@ -128,6 +128,13 @@ class AgentHandler(BaseHandler):
 
         SessionService(self.entity).sync_group_session_from_message(message)
         session_id = self._resolve_session_id(message)
+        if self._is_stopped_group_session(session_id):
+            logger.info(
+                f"{self._msgloop_prefix()} skip_stopped_group "
+                f"message_id={message.message_id} session_id={session_id}"
+            )
+            return
+
         await self._queue.put(QueuedMessage(session_id=session_id, message=message))
         logger.info(
             f"{self._msgloop_prefix()} 已入队 "
@@ -419,6 +426,15 @@ class AgentHandler(BaseHandler):
         for queued_message in queued_messages:
             grouped.setdefault(queued_message.session_id, []).append(queued_message.message)
         return grouped
+
+    def _is_stopped_group_session(self, session_id: str) -> bool:
+        """Return whether a local group session is stopped."""
+        session = self.entity.sessions.get(session_id)
+        return bool(
+            session is not None
+            and SessionService.is_group_session(session)
+            and SessionService.is_group_stopped(session)
+        )
 
     def _provider_session_seed(self, session_id: str) -> str:
         """Return the provider-side session seed for this entity and FP session."""

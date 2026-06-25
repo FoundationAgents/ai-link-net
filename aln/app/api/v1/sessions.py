@@ -42,6 +42,7 @@ class SessionInfo(BaseModel):
     updated_at: float
     message_count: int = 0
     session_type: str = "direct"
+    status: str = "active"
     created_by: str | None = None
     members: list[GroupMemberInfo] = Field(default_factory=list)
 
@@ -98,6 +99,7 @@ def _to_session_info(session: Session) -> SessionInfo:
         updated_at=session.updated_at,
         message_count=0,
         session_type=SessionService.session_type(session),
+        status=SessionService.group_status(session) if SessionService.is_group_session(session) else "active",
         created_by=session.metadata.get("created_by") if isinstance(session.metadata.get("created_by"), str) else None,
         members=list(members.values()),
     )
@@ -257,6 +259,44 @@ async def delete_group_session(
         success=True,
         message="Group session deleted successfully",
         data={},
+    )
+
+
+@router.post("/groups/{session_id}/stop", response_model=StandardResponse[SessionInfo | dict[str, Any]])
+@exception_wrapper(catch_http_exc=True)
+async def stop_group_session(
+    entity_uid: str,
+    session_id: str,
+    target_entity: Annotated[Entity, Depends(get_target_entity)],
+    current_host: Annotated[Host, Depends(get_host_runtime)],
+) -> StandardResponse[SessionInfo | dict[str, Any]]:
+    """Stop one group session without deleting its history or members."""
+    session = SessionService(target_entity).stop_group_session(session_id)
+    SessionService.sync_group_session_to_local_members(current_host, session)
+
+    return StandardResponse[SessionInfo](
+        success=True,
+        message="Group session stopped successfully",
+        data=_to_session_info(session),
+    )
+
+
+@router.post("/groups/{session_id}/resume", response_model=StandardResponse[SessionInfo | dict[str, Any]])
+@exception_wrapper(catch_http_exc=True)
+async def resume_group_session(
+    entity_uid: str,
+    session_id: str,
+    target_entity: Annotated[Entity, Depends(get_target_entity)],
+    current_host: Annotated[Host, Depends(get_host_runtime)],
+) -> StandardResponse[SessionInfo | dict[str, Any]]:
+    """Resume one stopped group session."""
+    session = SessionService(target_entity).resume_group_session(session_id)
+    SessionService.sync_group_session_to_local_members(current_host, session)
+
+    return StandardResponse[SessionInfo](
+        success=True,
+        message="Group session resumed successfully",
+        data=_to_session_info(session),
     )
 
 

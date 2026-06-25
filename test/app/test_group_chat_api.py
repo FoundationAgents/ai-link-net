@@ -19,6 +19,8 @@ from aln.app.api.v1.sessions import (
     delete_group_session,
     list_group_sessions,
     remove_group_member,
+    resume_group_session,
+    stop_group_session,
 )
 from fp import Entity, EntityKind, Host
 from fp.mailbox import Mailbox
@@ -378,3 +380,124 @@ def test_group_session_can_be_deleted_from_local_members() -> None:
     assert alice_has_copy is False
     assert bob_has_copy is False
     assert carol_has_copy is False
+
+
+def test_group_session_can_be_stopped_and_resumed() -> None:
+    """Stopping a room should block sends until it is resumed."""
+
+    async def run() -> tuple[str, str, dict, dict]:
+        host, alice, bob, carol = _create_group_members()
+        created = await create_group_session(
+            alice.uid,
+            CreateGroupSessionRequest(
+                name="Pause Room",
+                members=[bob.uid, carol.uid],
+            ),
+            target_entity=alice,
+            current_host=host,
+        )
+        assert created.data is not None
+
+        stopped = await stop_group_session(
+            alice.uid,
+            created.data.session_id,
+            target_entity=alice,
+            current_host=host,
+        )
+        assert stopped.data is not None
+
+        blocked = await send_group_message(
+            SendGroupMessageRequest(
+                from_entity=alice.uid,
+                session_id=created.data.session_id,
+                text="This should be blocked.",
+            ),
+            current_host=host,
+        )
+
+        resumed = await resume_group_session(
+            alice.uid,
+            created.data.session_id,
+            target_entity=alice,
+            current_host=host,
+        )
+        assert resumed.data is not None
+
+        sent = await send_group_message(
+            SendGroupMessageRequest(
+                from_entity=alice.uid,
+                session_id=created.data.session_id,
+                text="This should be delivered.",
+            ),
+            current_host=host,
+        )
+        assert sent.data is not None
+        return stopped.data.status, resumed.data.status, blocked.model_dump(), sent.data
+
+    stopped_status, resumed_status, blocked, sent = asyncio.run(run())
+    assert stopped_status == "stopped"
+    assert resumed_status == "active"
+    assert blocked["success"] is False
+    assert blocked["data"] == {"error_code": 409}
+    assert "stopped" in blocked["message"]
+    assert sent["recipient_count"] == 2
+
+
+def test_group_history_can_be_filtered_by_session() -> None:
+    """Mailbox reads should filter group history after formatting messages."""
+
+    async def run() -> tuple[list[dict], str]:
+        host, alice, bob, carol = _create_group_members()
+        first = await create_group_session(
+            alice.uid,
+            CreateGroupSessionRequest(
+                name="First Room",
+                members=[bob.uid],
+            ),
+            target_entity=alice,
+            current_host=host,
+        )
+        second = await create_group_session(
+            alice.uid,
+            CreateGroupSessionRequest(
+                name="Second Room",
+                members=[bob.uid, carol.uid],
+            ),
+            target_entity=alice,
+            current_host=host,
+        )
+        assert first.data is not None
+        assert second.data is not None
+
+        await send_group_message(
+            SendGroupMessageRequest(
+                from_entity=alice.uid,
+                session_id=first.data.session_id,
+                text="Only the first room.",
+            ),
+            current_host=host,
+        )
+        await send_group_message(
+            SendGroupMessageRequest(
+                from_entity=alice.uid,
+                session_id=second.data.session_id,
+                text="Only the second room.",
+            ),
+            current_host=host,
+        )
+        await asyncio.sleep(0.2)
+
+        history = await get_messages(
+            bob.uid,
+            current_host=host,
+            limit=10,
+            session_id=second.data.session_id,
+            conversation_type="group",
+        )
+        assert history.data is not None
+        return history.data, second.data.session_id
+
+    messages, session_id = asyncio.run(run())
+    assert len(messages) == 1
+    assert messages[0]["group_id"] == session_id
+    assert messages[0]["payload"]["text"] == "Only the second room."
